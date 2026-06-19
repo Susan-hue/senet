@@ -17,8 +17,7 @@ indent-style = "space"
 line-ending = "auto"
 
 [tool.bandit]
-exclude_dirs = ["migrations", ".venv", "venv"]
-exclude = ["*/tests.py", "*/test_*.py", "*_test.py"]
+exclude_dirs = ["migrations", ".venv", "venv", "*/tests.py", "*/test_*.py", "*_test.py"]
 
 [tool.bandit.assert_used]
 skips = ["**/tests.py"]
