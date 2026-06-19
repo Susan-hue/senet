@@ -1,0 +1,183 @@
+from django.conf import settings
+from django.contrib.auth import authenticate, get_user_model
+from django.core import signing
+from rest_framework import status
+from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.views import APIView
+from rest_framework_simplejwt.exceptions import TokenError
+from rest_framework_simplejwt.tokens import RefreshToken
+
+from accounts import tokens
+from accounts.responses import error_response, success_response
+from accounts.serializers import (
+    LoginSerializer,
+    PasswordResetConfirmSerializer,
+    PasswordResetRequestSerializer,
+    RegisterSerializer,
+)
+from accounts.tasks import send_password_reset_email, send_verification_email
+
+User = get_user_model()
+
+
+def _set_refresh_cookie(response, refresh):
+    response.set_cookie(
+        key=settings.AUTH_REFRESH_COOKIE_NAME,
+        value=str(refresh),
+        max_age=int(settings.SIMPLE_JWT["REFRESH_TOKEN_LIFETIME"].total_seconds()),
+        httponly=True,
+        secure=True,
+        samesite="Strict",
+        path=settings.AUTH_REFRESH_COOKIE_PATH,
+    )
+
+
+class RegisterView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        serializer = RegisterSerializer(data=request.data)
+        if not serializer.is_valid():
+            return error_response("Registration failed.", serializer.errors)
+        user = serializer.save()
+        token = tokens.make_email_verification_token(user)
+        send_verification_email.delay(user.email, token)
+        return success_response(
+            {"id": str(user.id), "email": user.email},
+            "Registration successful. Check your email to verify your account.",
+            status.HTTP_201_CREATED,
+        )
+
+
+class VerifyEmailView(APIView):
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        token = request.query_params.get("token", "")
+        try:
+            uid = tokens.read_email_verification_token(token)
+        except signing.SignatureExpired:
+            return error_response("Verification link has expired.")
+        except signing.BadSignature:
+            return error_response("Invalid verification link.")
+
+        user = User.objects.filter(pk=uid).first()
+        if user is None:
+            return error_response("Invalid verification link.")
+
+        if not user.is_verified:
+            user.is_verified = True
+            user.save(update_fields=["is_verified", "updated_at"])
+        return success_response(message="Email verified. You can now log in.")
+
+
+class LoginView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        serializer = LoginSerializer(data=request.data)
+        if not serializer.is_valid():
+            return error_response("Login failed.", serializer.errors)
+
+        user = authenticate(
+            request,
+            username=serializer.validated_data["email"],
+            password=serializer.validated_data["password"],
+        )
+        if user is None:
+            return error_response("Invalid credentials.", http_status=status.HTTP_401_UNAUTHORIZED)
+        if not user.is_verified:
+            return error_response("Email not verified.", http_status=status.HTTP_403_FORBIDDEN)
+
+        refresh = RefreshToken.for_user(user)
+        response = success_response({"access": str(refresh.access_token)}, "Login successful.")
+        _set_refresh_cookie(response, refresh)
+        return response
+
+
+class TokenRefreshView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        raw = request.COOKIES.get(settings.AUTH_REFRESH_COOKIE_NAME)
+        if not raw:
+            return error_response(
+                "Refresh token missing.", http_status=status.HTTP_401_UNAUTHORIZED
+            )
+        try:
+            refresh = RefreshToken(raw)
+        except TokenError:
+            return error_response(
+                "Invalid or expired refresh token.",
+                http_status=status.HTTP_401_UNAUTHORIZED,
+            )
+
+        user = User.objects.filter(pk=refresh.payload.get("user_id")).first()
+        if user is None:
+            return error_response(
+                "Invalid refresh token.", http_status=status.HTTP_401_UNAUTHORIZED
+            )
+
+        refresh.blacklist()
+        new_refresh = RefreshToken.for_user(user)
+        response = success_response({"access": str(new_refresh.access_token)}, "Token refreshed.")
+        _set_refresh_cookie(response, new_refresh)
+        return response
+
+
+class LogoutView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        raw = request.COOKIES.get(settings.AUTH_REFRESH_COOKIE_NAME)
+        if raw:
+            try:
+                RefreshToken(raw).blacklist()
+            except TokenError:
+                pass
+        response = success_response(message="Logout successful.")
+        response.delete_cookie(
+            settings.AUTH_REFRESH_COOKIE_NAME, path=settings.AUTH_REFRESH_COOKIE_PATH
+        )
+        return response
+
+
+class PasswordResetRequestView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        serializer = PasswordResetRequestSerializer(data=request.data)
+        if not serializer.is_valid():
+            return error_response("Invalid request.", serializer.errors)
+
+        user = User.objects.filter(email=serializer.validated_data["email"]).first()
+        if user is not None:
+            token = tokens.make_password_reset_token(user)
+            send_password_reset_email.delay(user.email, token)
+        return success_response(
+            message="If an account exists for that email, a reset link has been sent."
+        )
+
+
+class PasswordResetConfirmView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        serializer = PasswordResetConfirmSerializer(data=request.data)
+        if not serializer.is_valid():
+            return error_response("Invalid request.", serializer.errors)
+
+        try:
+            uid = tokens.read_password_reset_token(serializer.validated_data["token"])
+        except signing.SignatureExpired:
+            return error_response("Reset link has expired.")
+        except signing.BadSignature:
+            return error_response("Invalid reset link.")
+
+        user = User.objects.filter(pk=uid).first()
+        if user is None:
+            return error_response("Invalid reset link.")
+
+        user.set_password(serializer.validated_data["password"])
+        user.save(update_fields=["password", "updated_at"])
+        return success_response(message="Password has been reset. You can now log in.")
