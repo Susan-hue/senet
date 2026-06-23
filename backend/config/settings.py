@@ -1,6 +1,8 @@
+import sys
 from datetime import timedelta
 from pathlib import Path
 
+import dj_database_url
 from decouple import Csv, config
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -61,23 +63,33 @@ TEMPLATES = [
     }
 ]
 
-if DEBUG:
-    DATABASES = {
-        "default": {
-            "ENGINE": "django.db.backends.sqlite3",
-            "NAME": BASE_DIR / "db.sqlite3",
-        }
-    }
+# During test runs we must never touch the real application database (the
+# Supabase project). Tests use DATABASE_URL_TEST when set (a throwaway local or
+# CI Postgres), otherwise fall back to SQLite. DATABASE_URL is ignored entirely
+# while testing so `manage.py test` can never create/drop databases on Supabase.
+TESTING = "test" in sys.argv
+
+_SQLITE_DEFAULT = {
+    "ENGINE": "django.db.backends.sqlite3",
+    "NAME": BASE_DIR / "db.sqlite3",
+}
+
+DATABASE_URL = config("DATABASE_URL", default="")
+DATABASE_URL_TEST = config("DATABASE_URL_TEST", default="")
+
+if TESTING:
+    if DATABASE_URL_TEST:
+        # conn_max_age=0 so Django closes connections before tearing down the
+        # test database, avoiding a "database is being accessed" drop race.
+        DATABASES = {"default": dj_database_url.parse(DATABASE_URL_TEST, conn_max_age=0)}
+    else:
+        DATABASES = {"default": _SQLITE_DEFAULT}
+elif DATABASE_URL:
+    DATABASES = {"default": dj_database_url.parse(DATABASE_URL, conn_max_age=600)}
+elif DEBUG:
+    DATABASES = {"default": _SQLITE_DEFAULT}
 else:
-    DATABASE_URL = config("DATABASE_URL", default="")
-    if not DATABASE_URL:
-        raise ValueError("DATABASE_URL must be set when DEBUG is False")
-
-    import dj_database_url
-
-    DATABASES = {
-        "default": dj_database_url.parse(DATABASE_URL, conn_max_age=600),
-    }
+    raise ValueError("DATABASE_URL must be set when DEBUG is False")
 
 AUTH_USER_MODEL = "accounts.User"
 
