@@ -1,3 +1,4 @@
+import ssl
 import sys
 from datetime import timedelta
 from pathlib import Path
@@ -126,12 +127,29 @@ EMAIL_VERIFICATION_MAX_AGE = 60 * 60 * 24
 PASSWORD_RESET_MAX_AGE = 60 * 60
 
 CELERY_BROKER_URL = config("CELERY_BROKER_URL", default="redis://localhost:6379/0")
-CELERY_RESULT_BACKEND = config("CELERY_RESULT_BACKEND", default="redis://localhost:6379/1")
+# Default the result backend to the broker so a single managed Redis (e.g. Upstash)
+# can serve both without extra configuration. Override explicitly if you want them split.
+CELERY_RESULT_BACKEND = config("CELERY_RESULT_BACKEND", default=CELERY_BROKER_URL)
 CELERY_TASK_ALWAYS_EAGER = config("CELERY_TASK_ALWAYS_EAGER", default=DEBUG, cast=bool)
 CELERY_TASK_EAGER_PROPAGATES = True
 CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
+
+# Managed Redis providers like Upstash require TLS (rediss://). Celery refuses a
+# rediss:// URL unless SSL options are provided, so set them whenever TLS is in use.
+# ssl_cert_reqs is configurable; "required" verifies the server cert (Upstash uses a
+# valid public CA), "none" disables verification.
+_CELERY_SSL_CERT_REQS = {
+    "required": ssl.CERT_REQUIRED,
+    "optional": ssl.CERT_OPTIONAL,
+    "none": ssl.CERT_NONE,
+}[config("CELERY_SSL_CERT_REQS", default="required").lower()]
+
+if CELERY_BROKER_URL.startswith("rediss://"):
+    CELERY_BROKER_USE_SSL = {"ssl_cert_reqs": _CELERY_SSL_CERT_REQS}
+if CELERY_RESULT_BACKEND.startswith("rediss://"):
+    CELERY_REDIS_BACKEND_USE_SSL = {"ssl_cert_reqs": _CELERY_SSL_CERT_REQS}
 
 CORS_ALLOWED_ORIGINS = config("CORS_ALLOWED_ORIGINS", default="http://localhost:5173", cast=Csv())
 
