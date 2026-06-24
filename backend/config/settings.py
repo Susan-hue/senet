@@ -36,6 +36,7 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",
     "django.middleware.security.SecurityMiddleware",
+    "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -80,8 +81,6 @@ DATABASE_URL_TEST = config("DATABASE_URL_TEST", default="")
 
 if TESTING:
     if DATABASE_URL_TEST:
-        # conn_max_age=0 so Django closes connections before tearing down the
-        # test database, avoiding a "database is being accessed" drop race.
         DATABASES = {"default": dj_database_url.parse(DATABASE_URL_TEST, conn_max_age=0)}
     else:
         DATABASES = {"default": _SQLITE_DEFAULT}
@@ -127,8 +126,7 @@ EMAIL_VERIFICATION_MAX_AGE = 60 * 60 * 24
 PASSWORD_RESET_MAX_AGE = 60 * 60
 
 CELERY_BROKER_URL = config("CELERY_BROKER_URL", default="redis://localhost:6379/0")
-# Default the result backend to the broker so a single managed Redis (e.g. Upstash)
-# can serve both without extra configuration. Override explicitly if you want them split.
+
 CELERY_RESULT_BACKEND = config("CELERY_RESULT_BACKEND", default=CELERY_BROKER_URL)
 CELERY_TASK_ALWAYS_EAGER = config("CELERY_TASK_ALWAYS_EAGER", default=DEBUG, cast=bool)
 CELERY_TASK_EAGER_PROPAGATES = True
@@ -136,10 +134,6 @@ CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
 
-# Managed Redis providers like Upstash require TLS (rediss://). Celery refuses a
-# rediss:// URL unless SSL options are provided, so set them whenever TLS is in use.
-# ssl_cert_reqs is configurable; "required" verifies the server cert (Upstash uses a
-# valid public CA), "none" disables verification.
 _CELERY_SSL_CERT_REQS = {
     "required": ssl.CERT_REQUIRED,
     "optional": ssl.CERT_OPTIONAL,
@@ -158,10 +152,19 @@ TIME_ZONE = "Africa/Lagos"
 USE_I18N = True
 USE_TZ = True
 STATIC_URL = "static/"
+
+STORAGES = {
+    "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+    "staticfiles": {
+        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+    },
+}
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 if not DEBUG:
     SECURE_SSL_REDIRECT = config("SECURE_SSL_REDIRECT", default=True, cast=bool)
+
+    SECURE_REDIRECT_EXEMPT = [r"^healthz/?$"]
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
