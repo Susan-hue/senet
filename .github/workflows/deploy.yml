@@ -1,0 +1,39 @@
+name: Deploy
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-${{ github.event.workflow_run.head_branch }}
+  cancel-in-progress: false
+
+jobs:
+  deploy-backend:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - run: flyctl deploy --config backend/fly.toml --app senet-backend-jnb --remote-only
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_DEPLOY_TOKEN_BACKEND }}
+
+  deploy-worker:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - run: flyctl deploy --config backend/fly.worker.toml --app senet-worker-jnb --remote-only
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_DEPLOY_TOKEN_WORKER }}
