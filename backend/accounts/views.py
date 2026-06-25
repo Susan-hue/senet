@@ -20,16 +20,26 @@ from accounts.tasks import send_password_reset_email, send_verification_email
 User = get_user_model()
 
 
+def _refresh_cookie_kwargs():
+    return {
+        "key": settings.AUTH_REFRESH_COOKIE_NAME,
+        "httponly": True,
+        "secure": settings.AUTH_REFRESH_COOKIE_SECURE,
+        "samesite": settings.AUTH_REFRESH_COOKIE_SAMESITE,
+        "path": settings.AUTH_REFRESH_COOKIE_PATH,
+    }
+
+
 def _set_refresh_cookie(response, refresh):
     response.set_cookie(
-        key=settings.AUTH_REFRESH_COOKIE_NAME,
         value=str(refresh),
         max_age=int(settings.SIMPLE_JWT["REFRESH_TOKEN_LIFETIME"].total_seconds()),
-        httponly=True,
-        secure=True,
-        samesite="Strict",
-        path=settings.AUTH_REFRESH_COOKIE_PATH,
+        **_refresh_cookie_kwargs(),
     )
+
+
+def _clear_refresh_cookie(response):
+    response.set_cookie(value="", max_age=0, **_refresh_cookie_kwargs())
 
 
 class RegisterView(APIView):
@@ -136,9 +146,7 @@ class LogoutView(APIView):
             except TokenError:
                 pass
         response = success_response(message="Logout successful.")
-        response.delete_cookie(
-            settings.AUTH_REFRESH_COOKIE_NAME, path=settings.AUTH_REFRESH_COOKIE_PATH
-        )
+        _clear_refresh_cookie(response)
         return response
 
 

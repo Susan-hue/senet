@@ -88,7 +88,7 @@ class AuthAPITests(APITestCase):
         cookie = response.cookies[self.cookie_name]
         self.assertTrue(cookie["httponly"])
         self.assertTrue(cookie["secure"])
-        self.assertEqual(cookie["samesite"], "Strict")
+        self.assertEqual(cookie["samesite"], "None")
         self.assertNotEqual(cookie.value, access)
 
     def test_token_refresh_reads_cookie_and_returns_new_access(self):

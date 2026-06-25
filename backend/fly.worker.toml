@@ -1,0 +1,12 @@
+app = "senet-worker-jnb"
+primary_region = "jnb"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[processes]
+  worker = "celery -A config worker --loglevel=info"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
