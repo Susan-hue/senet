@@ -12,4 +12,4 @@ RUN python manage.py collectstatic --noinput
 
 EXPOSE 8080
 
-CMD ["gunicorn", "config.wsgi:application", "--bind", "0.0.0.0:8080"]
+CMD ["gunicorn", "config.wsgi:application", "--bind", "0.0.0.0:8080", "--access-logfile", "-", "--error-logfile", "-", "--enable-stdio-inheritance"]

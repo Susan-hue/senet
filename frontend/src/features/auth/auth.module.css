@@ -1,0 +1,46 @@
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.metaRow {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: -6px;
+}
+
+.smallLink {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.smallLink:hover {
+  color: var(--text);
+}
+
+.center {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.loadingRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--text-muted);
+  font-size: 14.5px;
+}
+
+.backLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13.5px;
+  color: var(--text-muted);
+}
+
+.backLink:hover {
+  color: var(--text);
+}

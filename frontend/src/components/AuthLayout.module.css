@@ -1,0 +1,98 @@
+.page {
+  min-height: 100dvh;
+  display: grid;
+  grid-template-columns: 1fr;
+}
+
+.brand {
+  display: none;
+}
+
+.main {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 20px;
+}
+
+.card {
+  width: 100%;
+  max-width: 400px;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+.cardBrand {
+  display: flex;
+}
+
+.header {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.title {
+  font-size: 24px;
+  line-height: 1.2;
+}
+
+.subtitle {
+  font-size: 14.5px;
+  line-height: 1.5;
+  color: var(--text-muted);
+  max-width: 52ch;
+}
+
+.footer {
+  padding-top: 2px;
+  font-size: 13.5px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+@media (min-width: 1024px) {
+  .page {
+    grid-template-columns: 1.05fr 1fr;
+  }
+
+  .brand {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 48px;
+    background: linear-gradient(180deg, #0c1322 0%, var(--bg) 100%);
+    border-right: 1px solid var(--border);
+  }
+
+  .brandBody {
+    max-width: 380px;
+  }
+
+  .brandHeadline {
+    font-size: 30px;
+    line-height: 1.18;
+    letter-spacing: -0.03em;
+  }
+
+  .brandText {
+    margin-top: 14px;
+    font-size: 15px;
+    line-height: 1.55;
+    color: var(--text-muted);
+  }
+
+  .brandFoot {
+    font-size: 13px;
+    color: var(--text-faint);
+  }
+
+  .cardBrand {
+    display: none;
+  }
+
+  .card {
+    max-width: 384px;
+  }
+}

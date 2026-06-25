@@ -5,6 +5,7 @@ from pathlib import Path
 
 import dj_database_url
 from decouple import Csv, config
+from django.core.management.utils import get_random_secret_key
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -13,7 +14,7 @@ SECRET_KEY = config("SECRET_KEY", default="")
 
 if not SECRET_KEY:
     if DEBUG:
-        SECRET_KEY = "dev-only-insecure-key-change-me"  # nosec B105
+        SECRET_KEY = get_random_secret_key()
     else:
         raise ValueError("SECRET_KEY must be set when DEBUG is False")
 
@@ -34,6 +35,7 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
+    "config.health.HealthCheckMiddleware",
     "corsheaders.middleware.CorsMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
@@ -65,10 +67,6 @@ TEMPLATES = [
     }
 ]
 
-# During test runs we must never touch the real application database (the
-# Supabase project). Tests use DATABASE_URL_TEST when set (a throwaway local or
-# CI Postgres), otherwise fall back to SQLite. DATABASE_URL is ignored entirely
-# while testing so `manage.py test` can never create/drop databases on Supabase.
 TESTING = "test" in sys.argv
 
 _SQLITE_DEFAULT = {
@@ -117,10 +115,19 @@ SIMPLE_JWT = {
 
 AUTH_REFRESH_COOKIE_NAME = "refresh_token"
 AUTH_REFRESH_COOKIE_PATH = "/api/v1/auth/"
+AUTH_REFRESH_COOKIE_SAMESITE = config("AUTH_REFRESH_COOKIE_SAMESITE", default="None")
+AUTH_REFRESH_COOKIE_SECURE = config("AUTH_REFRESH_COOKIE_SECURE", default=True, cast=bool)
 
 EMAIL_BACKEND = config("EMAIL_BACKEND", default="django.core.mail.backends.console.EmailBackend")
 DEFAULT_FROM_EMAIL = config("DEFAULT_FROM_EMAIL", default="no-reply@senet.local")
 FRONTEND_URL = config("FRONTEND_URL", default="http://localhost:5173")
+
+if EMAIL_BACKEND == "django.core.mail.backends.smtp.EmailBackend":
+    EMAIL_HOST = config("EMAIL_HOST")
+    EMAIL_HOST_USER = config("EMAIL_HOST_USER")
+    EMAIL_HOST_PASSWORD = config("RESEND_API_KEY")
+    EMAIL_PORT = config("EMAIL_PORT", cast=int)
+    EMAIL_USE_TLS = config("EMAIL_USE_TLS", cast=bool)
 
 EMAIL_VERIFICATION_MAX_AGE = 60 * 60 * 24
 PASSWORD_RESET_MAX_AGE = 60 * 60
@@ -146,12 +153,17 @@ if CELERY_RESULT_BACKEND.startswith("rediss://"):
     CELERY_REDIS_BACKEND_USE_SSL = {"ssl_cert_reqs": _CELERY_SSL_CERT_REQS}
 
 CORS_ALLOWED_ORIGINS = config("CORS_ALLOWED_ORIGINS", default="http://localhost:5173", cast=Csv())
+CORS_ALLOW_CREDENTIALS = True
+CSRF_TRUSTED_ORIGINS = (
+    config("CSRF_TRUSTED_ORIGINS", default="", cast=Csv()) or CORS_ALLOWED_ORIGINS
+)
 
 LANGUAGE_CODE = "en-us"
 TIME_ZONE = "Africa/Lagos"
 USE_I18N = True
 USE_TZ = True
 STATIC_URL = "static/"
+STATIC_ROOT = BASE_DIR / "staticfiles"
 
 STORAGES = {
     "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
