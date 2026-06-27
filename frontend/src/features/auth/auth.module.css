@@ -4,14 +4,8 @@
   gap: 16px;
 }
 
-.metaRow {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: -6px;
-}
-
 .smallLink {
-  font-size: 13px;
+  font-size: 13.5px;
   color: var(--text-muted);
 }
 
@@ -28,6 +22,7 @@
 .loadingRow {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 12px;
   color: var(--text-muted);
   font-size: 14.5px;
@@ -43,4 +38,148 @@
 
 .backLink:hover {
   color: var(--text);
+}
+
+/* Own-header blocks (verify, forgot) */
+.head {
+  margin-bottom: 26px;
+}
+
+.headCenter {
+  margin-bottom: 26px;
+  text-align: center;
+}
+
+.h2 {
+  font-size: 28px;
+  line-height: 1.2;
+  letter-spacing: -0.022em;
+  color: var(--text-primary);
+}
+
+.sub {
+  margin-top: 8px;
+  font-size: 14.5px;
+  line-height: 1.55;
+  color: var(--text-muted);
+}
+
+.verifyBadge {
+  width: 64px;
+  height: 64px;
+  margin: 0 auto 24px;
+  border-radius: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  background: linear-gradient(140deg, #6366f1, #8b5cf6);
+  box-shadow:
+    0 0 40px rgba(124, 108, 246, 0.6),
+    inset 0 1px 0 rgba(255, 255, 255, 0.25);
+  animation: pulseRing 2.6s ease-out infinite;
+}
+
+.iconTile {
+  width: 54px;
+  height: 54px;
+  margin: 0 0 22px;
+  border-radius: 15px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent-link);
+  background: rgba(99, 102, 241, 0.14);
+  border: 1px solid rgba(124, 108, 246, 0.4);
+  box-shadow: 0 0 26px rgba(99, 102, 241, 0.22);
+}
+
+/* Sign in: SSO + divider + remember */
+.sso {
+  width: 100%;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 0 14px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-btn);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #d8d8e2;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    background-color 0.18s ease,
+    border-color 0.18s ease;
+}
+
+.sso:hover {
+  background: #15151a;
+  border-color: rgba(124, 108, 246, 0.5);
+}
+
+.ssoGlyph {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  flex-shrink: 0;
+}
+
+.divider {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.dividerLine {
+  flex: 1;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.dividerText {
+  font-size: 12px;
+  color: #5a5a62;
+}
+
+.remember {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 13.5px;
+  color: var(--text-label);
+  cursor: pointer;
+}
+
+.checkbox {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.finePrint {
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: center;
+  color: var(--text-faint);
+}
+
+.term {
+  color: var(--text-label);
+  font-weight: 500;
+}
+
+.forgotLink {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--accent-link);
+}
+
+.forgotLink:hover {
+  color: #c7c2ff;
 }

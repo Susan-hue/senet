@@ -2,7 +2,7 @@ import { useState } from "react";
 import type { FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { Alert, AuthLayout, Button, Field } from "../../components";
-import { ArrowLeftIcon } from "../../components/icons";
+import { ArrowLeftIcon, MailIcon } from "../../components/icons";
 import { requestPasswordReset } from "../../services/auth";
 import { ApiError } from "../../services/api";
 import styles from "./auth.module.css";
@@ -53,8 +53,6 @@ export function ForgotPasswordPage() {
 
   return (
     <AuthLayout
-      title="Reset your password"
-      subtitle="Enter your email and we'll send you a reset link."
       footer={
         <Link className={styles.backLink} to="/login">
           <ArrowLeftIcon size={16} />
@@ -62,16 +60,26 @@ export function ForgotPasswordPage() {
         </Link>
       }
     >
+      <div className={styles.head}>
+        <div className={styles.iconTile}>
+          <MailIcon size={22} />
+        </div>
+        <h2 className={styles.h2}>Forgot password?</h2>
+        <p className={styles.sub}>
+          Enter the email tied to your account and we'll send a secure link to reset your password.
+        </p>
+      </div>
+
       <form className={styles.form} onSubmit={onSubmit} noValidate>
         {formError ? <Alert variant="error">{formError}</Alert> : null}
         <Field
-          label="Email"
+          label="Email address"
           type="email"
           value={email}
           onChange={setEmail}
           autoComplete="email"
           inputMode="email"
-          placeholder="you@school.edu"
+          placeholder="you@university.edu.ng"
           required
           error={fieldErrors.email?.[0]}
         />

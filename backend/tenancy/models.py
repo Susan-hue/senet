@@ -20,6 +20,11 @@ class Institution(TimeStampedUUIDModel):
         ("4_POINT", "4-Point Scale"),
     ]
 
+    CARRYOVER_CGPA_METHOD_CHOICES = [
+        ("ALL_ATTEMPTS", "All attempts count in CGPA"),
+        ("HIGHEST_ONLY", "Only the best attempt counts in CGPA"),
+    ]
+
     name = models.CharField(max_length=200)
     code = models.SlugField(max_length=30, unique=True)
     is_active = models.BooleanField(default=True)
@@ -31,6 +36,20 @@ class Institution(TimeStampedUUIDModel):
     default_exam_weight = models.PositiveSmallIntegerField(default=60)
     pass_mark = models.DecimalField(max_digits=5, decimal_places=2, default=40)
     probation_cgpa_threshold = models.DecimalField(max_digits=4, decimal_places=2, default=1.50)
+
+    # Min/max credit units a student may register per semester (NUC-mandated
+    # defaults; configurable per university).
+    min_credit_units_per_semester = models.PositiveSmallIntegerField(default=15)
+    max_credit_units_per_semester = models.PositiveSmallIntegerField(default=24)
+
+    # How retaken (carryover) courses count toward CGPA: ALL_ATTEMPTS keeps every
+    # attempt in the CGPA denominator; HIGHEST_ONLY counts only the best attempt
+    # (the failed attempt stays on the transcript but is excluded from the denominator).
+    carryover_cgpa_method = models.CharField(
+        max_length=20, choices=CARRYOVER_CGPA_METHOD_CHOICES, default="ALL_ATTEMPTS"
+    )
+    # Score below which a course is treated as a carryover/fail (varies 40-45%).
+    carryover_pass_mark = models.DecimalField(max_digits=5, decimal_places=2, default=40)
 
     enforce_fees_for_results = models.BooleanField(default=False)
     has_external_affiliation = models.BooleanField(default=False)
@@ -54,3 +73,5 @@ class Institution(TimeStampedUUIDModel):
     def clean(self):
         if self.default_ca_weight + self.default_exam_weight != 100:
             raise ValidationError("CA weight and Exam weight must sum to 100.")
+        if self.min_credit_units_per_semester > self.max_credit_units_per_semester:
+            raise ValidationError("Minimum credit units cannot exceed the maximum.")

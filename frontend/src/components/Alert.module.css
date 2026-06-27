@@ -20,7 +20,7 @@
 
 .error {
   background-color: var(--danger-soft);
-  border-color: rgba(244, 112, 122, 0.28);
+  border-color: rgba(241, 100, 108, 0.3);
 }
 
 .error svg {
@@ -29,7 +29,7 @@
 
 .success {
   background-color: var(--success-soft);
-  border-color: rgba(52, 211, 153, 0.28);
+  border-color: rgba(61, 214, 140, 0.3);
 }
 
 .success svg {
@@ -38,7 +38,7 @@
 
 .info {
   background-color: var(--accent-soft);
-  border-color: rgba(99, 102, 241, 0.28);
+  border-color: rgba(124, 108, 246, 0.3);
 }
 
 .info svg {

@@ -1,5 +1,5 @@
 import { useId, useState } from "react";
-import { EyeIcon, EyeOffIcon } from "./icons";
+import type { ReactNode } from "react";
 import styles from "./Field.module.css";
 
 interface FieldProps {
@@ -13,6 +13,7 @@ interface FieldProps {
   placeholder?: string;
   required?: boolean;
   inputMode?: "text" | "email";
+  labelAction?: ReactNode;
 }
 
 export function Field({
@@ -26,6 +27,7 @@ export function Field({
   placeholder,
   required = false,
   inputMode,
+  labelAction,
 }: FieldProps) {
   const id = useId();
   const errorId = `${id}-error`;
@@ -39,14 +41,17 @@ export function Field({
 
   return (
     <div className={styles.field}>
-      <label htmlFor={id} className={styles.label}>
-        {label}
-        {required ? (
-          <span className={styles.req} aria-hidden="true">
-            {" *"}
-          </span>
-        ) : null}
-      </label>
+      <div className={styles.labelRow}>
+        <label htmlFor={id} className={styles.label}>
+          {label}
+          {required ? (
+            <span className={styles.req} aria-hidden="true">
+              {" *"}
+            </span>
+          ) : null}
+        </label>
+        {labelAction}
+      </div>
       <div className={styles.inputWrap}>
         <input
           id={id}
@@ -74,7 +79,7 @@ export function Field({
             aria-label={reveal ? "Hide password" : "Show password"}
             aria-pressed={reveal}
           >
-            {reveal ? <EyeOffIcon size={18} /> : <EyeIcon size={18} />}
+            {reveal ? "Hide" : "Show"}
           </button>
         ) : null}
       </div>

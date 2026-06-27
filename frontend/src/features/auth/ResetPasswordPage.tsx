@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { FormEvent } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { Alert, AuthLayout, Button, Field } from "../../components";
+import { Alert, AuthLayout, Button, Field, StrengthMeter } from "../../components";
 import { resetPassword } from "../../services/auth";
 import { ApiError } from "../../services/api";
 import styles from "./auth.module.css";
@@ -75,7 +75,7 @@ export function ResetPasswordPage() {
   return (
     <AuthLayout
       title="Set a new password"
-      subtitle="Choose a strong password you don't use elsewhere."
+      subtitle="Choose a strong password you haven't used before."
       footer={
         <>
           Remembered it? <Link to="/login">Sign in</Link>
@@ -84,22 +84,26 @@ export function ResetPasswordPage() {
     >
       <form className={styles.form} onSubmit={onSubmit} noValidate>
         {formError ? <Alert variant="error">{formError}</Alert> : null}
-        <Field
-          label="New password"
-          type="password"
-          value={password}
-          onChange={setPassword}
-          autoComplete="new-password"
-          required
-          hint="At least 8 characters."
-          error={fieldErrors.password?.[0]}
-        />
+        <div>
+          <Field
+            label="New password"
+            type="password"
+            value={password}
+            onChange={setPassword}
+            autoComplete="new-password"
+            placeholder="Enter new password"
+            required
+            error={fieldErrors.password?.[0]}
+          />
+          <StrengthMeter password={password} />
+        </div>
         <Field
           label="Confirm password"
           type="password"
           value={confirm}
           onChange={setConfirm}
           autoComplete="new-password"
+          placeholder="Re-enter new password"
           required
           error={confirmError}
         />

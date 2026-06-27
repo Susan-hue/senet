@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Alert, AuthLayout, Button, Spinner } from "../../components";
+import { MailIcon } from "../../components/icons";
 import { verifyEmail } from "../../services/auth";
 import { ApiError } from "../../services/api";
 import styles from "./auth.module.css";
@@ -39,7 +40,14 @@ export function VerifyEmailPage() {
   }, [token]);
 
   return (
-    <AuthLayout title="Verify email">
+    <AuthLayout>
+      <div className={styles.headCenter}>
+        <div className={styles.verifyBadge}>
+          <MailIcon size={26} />
+        </div>
+        <h2 className={styles.h2}>Verify your email</h2>
+      </div>
+
       {state === "loading" ? (
         <div className={styles.loadingRow}>
           <Spinner size={18} label="Verifying" />
