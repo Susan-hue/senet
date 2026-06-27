@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Alert, AuthLayout, Button, Field, SelectField } from "../../components";
+import { Alert, AuthLayout, Button, Field, RoleChips } from "../../components";
 import { register } from "../../services/auth";
 import { ApiError } from "../../services/api";
 import { ROLE_OPTIONS } from "../../types";
@@ -61,7 +61,7 @@ export function RegisterPage() {
   return (
     <AuthLayout
       title="Create your account"
-      subtitle="Set up access to the Senet platform."
+      subtitle="Join your university's Senet workspace in minutes."
       footer={
         <>
           Already have an account? <Link to="/login">Sign in</Link>
@@ -75,20 +75,27 @@ export function RegisterPage() {
           value={fullName}
           onChange={setFullName}
           autoComplete="name"
-          placeholder="Ada Lovelace"
+          placeholder="Adaeze Okonkwo"
           required
           error={fieldError("full_name")}
         />
         <Field
-          label="Email"
+          label="Institution email"
           type="email"
           value={email}
           onChange={setEmail}
           autoComplete="email"
           inputMode="email"
-          placeholder="you@school.edu"
+          placeholder="you@university.edu.ng"
           required
           error={fieldError("email")}
+        />
+        <RoleChips
+          label="I am a"
+          value={role}
+          onChange={(value) => setRole(value as Role)}
+          options={ROLE_OPTIONS}
+          required
         />
         <Field
           label="Password"
@@ -96,21 +103,18 @@ export function RegisterPage() {
           value={password}
           onChange={setPassword}
           autoComplete="new-password"
+          placeholder="Create a strong password"
           required
           hint="At least 8 characters."
           error={fieldError("password")}
         />
-        <SelectField
-          label="Role"
-          value={role}
-          onChange={(value) => setRole(value as Role)}
-          options={ROLE_OPTIONS}
-          error={fieldError("role")}
-          required
-        />
         <Button type="submit" fullWidth loading={loading}>
           Create account
         </Button>
+        <p className={styles.finePrint}>
+          By continuing you agree to Senet's <span className={styles.term}>Terms</span> and{" "}
+          <span className={styles.term}>Privacy Policy</span>.
+        </p>
       </form>
     </AuthLayout>
   );

@@ -1,7 +1,19 @@
 from django.contrib.auth.password_validation import validate_password
 from rest_framework import serializers
 
-from accounts.models import Role, User
+from accounts.models import (
+    Course,
+    Department,
+    Enrolment,
+    Faculty,
+    Level,
+    Programme,
+    Role,
+    Semester,
+    Session,
+    User,
+)
+from tenancy.scoping import get_current_institution
 
 
 class RegisterSerializer(serializers.ModelSerializer):
@@ -38,3 +50,202 @@ class PasswordResetConfirmSerializer(serializers.Serializer):
     def validate_password(self, value):
         validate_password(value)
         return value
+
+
+# --------------------------------------------------------------------------- #
+# Academic structure                                                          #
+# --------------------------------------------------------------------------- #
+
+READ_ONLY_AUDIT = ["id", "created_at", "updated_at"]
+
+
+def _unique_code(model, code, instance):
+    """Reject a duplicate code within the current (auto-scoped) institution."""
+    qs = model.objects.filter(code=code)
+    if instance is not None:
+        qs = qs.exclude(pk=instance.pk)
+    if qs.exists():
+        raise serializers.ValidationError("A record with this code already exists.")
+
+
+class FacultySerializer(serializers.ModelSerializer):
+    institution = serializers.PrimaryKeyRelatedField(read_only=True)
+
+    class Meta:
+        model = Faculty
+        fields = ["id", "institution", "name", "code", "created_at", "updated_at"]
+        read_only_fields = READ_ONLY_AUDIT
+
+    def validate_code(self, value):
+        _unique_code(Faculty, value, self.instance)
+        return value
+
+
+class DepartmentSerializer(serializers.ModelSerializer):
+    institution = serializers.PrimaryKeyRelatedField(read_only=True)
+
+    class Meta:
+        model = Department
+        fields = ["id", "institution", "faculty", "name", "code", "created_at", "updated_at"]
+        read_only_fields = READ_ONLY_AUDIT
+
+    def validate_code(self, value):
+        _unique_code(Department, value, self.instance)
+        return value
+
+
+class ProgrammeSerializer(serializers.ModelSerializer):
+    institution = serializers.PrimaryKeyRelatedField(read_only=True)
+
+    class Meta:
+        model = Programme
+        fields = [
+            "id",
+            "institution",
+            "department",
+            "name",
+            "code",
+            "degree_type",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = READ_ONLY_AUDIT
+
+    def validate_code(self, value):
+        _unique_code(Programme, value, self.instance)
+        return value
+
+
+class SessionSerializer(serializers.ModelSerializer):
+    institution = serializers.PrimaryKeyRelatedField(read_only=True)
+
+    class Meta:
+        model = Session
+        fields = [
+            "id",
+            "institution",
+            "name",
+            "start_date",
+            "end_date",
+            "is_current",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = READ_ONLY_AUDIT
+
+    def validate_name(self, value):
+        qs = Session.objects.filter(name=value)
+        if self.instance is not None:
+            qs = qs.exclude(pk=self.instance.pk)
+        if qs.exists():
+            raise serializers.ValidationError("A session with this name already exists.")
+        return value
+
+    def validate(self, attrs):
+        start = attrs.get("start_date", getattr(self.instance, "start_date", None))
+        end = attrs.get("end_date", getattr(self.instance, "end_date", None))
+        if start and end and end <= start:
+            raise serializers.ValidationError({"end_date": "End date must be after start date."})
+        return attrs
+
+
+class SemesterSerializer(serializers.ModelSerializer):
+    institution = serializers.PrimaryKeyRelatedField(read_only=True)
+
+    class Meta:
+        model = Semester
+        fields = [
+            "id",
+            "institution",
+            "session",
+            "name",
+            "start_date",
+            "end_date",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = READ_ONLY_AUDIT
+
+    def validate(self, attrs):
+        start = attrs.get("start_date", getattr(self.instance, "start_date", None))
+        end = attrs.get("end_date", getattr(self.instance, "end_date", None))
+        if start and end and end <= start:
+            raise serializers.ValidationError({"end_date": "End date must be after start date."})
+
+        session = attrs.get("session", getattr(self.instance, "session", None))
+        name = attrs.get("name", getattr(self.instance, "name", None))
+        qs = Semester.objects.filter(session=session, name=name)
+        if self.instance is not None:
+            qs = qs.exclude(pk=self.instance.pk)
+        if qs.exists():
+            raise serializers.ValidationError(
+                {"name": "This session already has a semester with that name."}
+            )
+        return attrs
+
+
+class CourseSerializer(serializers.ModelSerializer):
+    institution = serializers.PrimaryKeyRelatedField(read_only=True)
+    level = serializers.ChoiceField(choices=Level.choices)
+    effective_ca_weight = serializers.IntegerField(read_only=True)
+    effective_exam_weight = serializers.IntegerField(read_only=True)
+
+    class Meta:
+        model = Course
+        fields = [
+            "id",
+            "institution",
+            "department",
+            "code",
+            "title",
+            "credit_units",
+            "level",
+            "ca_weight",
+            "exam_weight",
+            "effective_ca_weight",
+            "effective_exam_weight",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = READ_ONLY_AUDIT
+
+    def validate_code(self, value):
+        _unique_code(Course, value, self.instance)
+        return value
+
+    def validate(self, attrs):
+        ca = attrs.get("ca_weight", getattr(self.instance, "ca_weight", None))
+        exam = attrs.get("exam_weight", getattr(self.instance, "exam_weight", None))
+        if (ca is None) != (exam is None):
+            raise serializers.ValidationError("Provide both CA and exam weight, or neither.")
+        if ca is not None and ca + exam != 100:
+            raise serializers.ValidationError({"ca_weight": "CA and exam weight must sum to 100."})
+        return attrs
+
+
+class EnrolmentSerializer(serializers.ModelSerializer):
+    institution = serializers.PrimaryKeyRelatedField(read_only=True)
+
+    class Meta:
+        model = Enrolment
+        fields = [
+            "id",
+            "institution",
+            "student",
+            "course",
+            "session",
+            "semester",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = READ_ONLY_AUDIT
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        institution = get_current_institution()
+        if institution is not None:
+            self.fields["student"].queryset = User.objects.filter(
+                institution=institution, role=Role.STUDENT
+            )
+        else:
+            self.fields["student"].queryset = User.objects.none()

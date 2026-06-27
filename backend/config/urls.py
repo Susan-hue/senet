@@ -16,4 +16,5 @@ urlpatterns = [
     path("healthz/", healthz),
     path("admin/", admin.site.urls),
     path("api/v1/auth/", include("accounts.urls")),
+    path("api/v1/accounts/", include("accounts.academic_urls")),
 ]

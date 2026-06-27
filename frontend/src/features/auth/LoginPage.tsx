@@ -39,8 +39,8 @@ export function LoginPage() {
 
   return (
     <AuthLayout
-      title="Sign in"
-      subtitle="Welcome back. Enter your details to continue."
+      title="Sign in to Senet"
+      subtitle="Welcome back. Access your institution's workspace."
       footer={
         <>
           New to Senet? <Link to="/register">Create an account</Link>
@@ -50,13 +50,13 @@ export function LoginPage() {
       <form className={styles.form} onSubmit={onSubmit} noValidate>
         {formError ? <Alert variant="error">{formError}</Alert> : null}
         <Field
-          label="Email"
+          label="Email address"
           type="email"
           value={email}
           onChange={setEmail}
           autoComplete="email"
           inputMode="email"
-          placeholder="you@school.edu"
+          placeholder="you@university.edu.ng"
           required
           error={fieldError("email")}
         />
@@ -66,14 +66,15 @@ export function LoginPage() {
           value={password}
           onChange={setPassword}
           autoComplete="current-password"
+          placeholder="Enter your password"
           required
           error={fieldError("password")}
+          labelAction={
+            <Link className={styles.forgotLink} to="/forgot-password">
+              Forgot?
+            </Link>
+          }
         />
-        <div className={styles.metaRow}>
-          <Link className={styles.smallLink} to="/forgot-password">
-            Forgot password?
-          </Link>
-        </div>
         <Button type="submit" fullWidth loading={loading}>
           Sign in
         </Button>

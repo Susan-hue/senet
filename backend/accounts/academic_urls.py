@@ -1,0 +1,35 @@
+from django.urls import path
+
+from accounts.views import (
+    CourseDetailView,
+    CourseListCreateView,
+    DepartmentDetailView,
+    DepartmentListCreateView,
+    EnrolmentDetailView,
+    EnrolmentListCreateView,
+    FacultyDetailView,
+    FacultyListCreateView,
+    ProgrammeDetailView,
+    ProgrammeListCreateView,
+    SemesterDetailView,
+    SemesterListCreateView,
+    SessionDetailView,
+    SessionListCreateView,
+)
+
+urlpatterns = [
+    path("faculties", FacultyListCreateView.as_view(), name="faculty-list"),
+    path("faculties/<uuid:pk>", FacultyDetailView.as_view(), name="faculty-detail"),
+    path("departments", DepartmentListCreateView.as_view(), name="department-list"),
+    path("departments/<uuid:pk>", DepartmentDetailView.as_view(), name="department-detail"),
+    path("programmes", ProgrammeListCreateView.as_view(), name="programme-list"),
+    path("programmes/<uuid:pk>", ProgrammeDetailView.as_view(), name="programme-detail"),
+    path("sessions", SessionListCreateView.as_view(), name="session-list"),
+    path("sessions/<uuid:pk>", SessionDetailView.as_view(), name="session-detail"),
+    path("semesters", SemesterListCreateView.as_view(), name="semester-list"),
+    path("semesters/<uuid:pk>", SemesterDetailView.as_view(), name="semester-detail"),
+    path("courses", CourseListCreateView.as_view(), name="course-list"),
+    path("courses/<uuid:pk>", CourseDetailView.as_view(), name="course-detail"),
+    path("enrolments", EnrolmentListCreateView.as_view(), name="enrolment-list"),
+    path("enrolments/<uuid:pk>", EnrolmentDetailView.as_view(), name="enrolment-detail"),
+]
