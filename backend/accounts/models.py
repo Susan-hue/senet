@@ -279,3 +279,35 @@ class Enrolment(AcademicBase):
 
     def __str__(self):
         return f"{self.student.full_name} → {self.course.code} ({self.session.name})"
+
+
+class ImportJob(AcademicBase):
+    class Kind(models.TextChoices):
+        STUDENT = "student", "Student"
+        COURSE = "course", "Course"
+
+    class Status(models.TextChoices):
+        PENDING = "pending", "Pending"
+        PROCESSING = "processing", "Processing"
+        COMPLETED = "completed", "Completed"
+        FAILED = "failed", "Failed"
+
+    kind = models.CharField(max_length=10, choices=Kind.choices)
+    status = models.CharField(max_length=12, choices=Status.choices, default=Status.PENDING)
+    filename = models.CharField(max_length=255, blank=True, default="")
+    total_rows = models.PositiveIntegerField(default=0)
+    created_count = models.PositiveIntegerField(default=0)
+    skipped_count = models.PositiveIntegerField(default=0)
+    # Row-level failures: [{"row": <int>, "errors": [<str>, ...]}, ...]
+    errors = models.JSONField(default=list, blank=True)
+    message = models.CharField(max_length=255, blank=True, default="")
+    created_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, related_name="+", null=True, blank=True
+    )
+
+    class Meta:
+        db_table = "accounts_import_job"
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.kind} import ({self.status})"

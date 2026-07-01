@@ -132,6 +132,9 @@ if EMAIL_BACKEND == "django.core.mail.backends.smtp.EmailBackend":
 EMAIL_VERIFICATION_MAX_AGE = 60 * 60 * 24
 PASSWORD_RESET_MAX_AGE = 60 * 60
 
+IMPORT_MAX_FILE_BYTES = config("IMPORT_MAX_FILE_BYTES", default=5 * 1024 * 1024, cast=int)
+IMPORT_SYNC_MAX_ROWS = config("IMPORT_SYNC_MAX_ROWS", default=500, cast=int)
+
 CELERY_BROKER_URL = config("CELERY_BROKER_URL", default="redis://localhost:6379/0")
 
 CELERY_RESULT_BACKEND = config("CELERY_RESULT_BACKEND", default=CELERY_BROKER_URL)

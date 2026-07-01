@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.contrib.auth.password_validation import validate_password
 from rest_framework import serializers
 
@@ -6,6 +7,7 @@ from accounts.models import (
     Department,
     Enrolment,
     Faculty,
+    ImportJob,
     Level,
     Programme,
     Role,
@@ -249,3 +251,34 @@ class EnrolmentSerializer(serializers.ModelSerializer):
             )
         else:
             self.fields["student"].queryset = User.objects.none()
+
+
+class ImportUploadSerializer(serializers.Serializer):
+    file = serializers.FileField()
+
+    def validate_file(self, uploaded):
+        if not (uploaded.name or "").lower().endswith((".csv", ".xlsx")):
+            raise serializers.ValidationError("Only .csv and .xlsx files are supported.")
+        if uploaded.size > settings.IMPORT_MAX_FILE_BYTES:
+            limit_mb = settings.IMPORT_MAX_FILE_BYTES // (1024 * 1024)
+            raise serializers.ValidationError(f"File exceeds the maximum size of {limit_mb} MB.")
+        return uploaded
+
+
+class ImportJobSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ImportJob
+        fields = [
+            "id",
+            "kind",
+            "status",
+            "filename",
+            "total_rows",
+            "created_count",
+            "skipped_count",
+            "errors",
+            "message",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = fields

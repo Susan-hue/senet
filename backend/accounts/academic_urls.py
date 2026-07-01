@@ -2,6 +2,7 @@ from django.urls import path
 
 from accounts.views import (
     CourseDetailView,
+    CourseImportView,
     CourseListCreateView,
     DepartmentDetailView,
     DepartmentListCreateView,
@@ -9,12 +10,14 @@ from accounts.views import (
     EnrolmentListCreateView,
     FacultyDetailView,
     FacultyListCreateView,
+    ImportJobDetailView,
     ProgrammeDetailView,
     ProgrammeListCreateView,
     SemesterDetailView,
     SemesterListCreateView,
     SessionDetailView,
     SessionListCreateView,
+    StudentImportView,
 )
 
 urlpatterns = [
@@ -32,4 +35,7 @@ urlpatterns = [
     path("courses/<uuid:pk>", CourseDetailView.as_view(), name="course-detail"),
     path("enrolments", EnrolmentListCreateView.as_view(), name="enrolment-list"),
     path("enrolments/<uuid:pk>", EnrolmentDetailView.as_view(), name="enrolment-detail"),
+    path("import/students", StudentImportView.as_view(), name="import-students"),
+    path("import/courses", CourseImportView.as_view(), name="import-courses"),
+    path("import/jobs/<uuid:pk>", ImportJobDetailView.as_view(), name="import-job-detail"),
 ]
