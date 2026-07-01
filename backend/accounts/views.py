@@ -10,11 +10,13 @@ from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from accounts import tokens
+from accounts.importers import ImportFileError, decode_upload, import_courses, import_students
 from accounts.models import (
     Course,
     Department,
     Enrolment,
     Faculty,
+    ImportJob,
     Programme,
     Semester,
     Session,
@@ -26,6 +28,8 @@ from accounts.serializers import (
     DepartmentSerializer,
     EnrolmentSerializer,
     FacultySerializer,
+    ImportJobSerializer,
+    ImportUploadSerializer,
     LoginSerializer,
     PasswordResetConfirmSerializer,
     PasswordResetRequestSerializer,
@@ -35,7 +39,7 @@ from accounts.serializers import (
     SessionSerializer,
 )
 from accounts.services import enrol_student
-from accounts.tasks import send_password_reset_email, send_verification_email
+from accounts.tasks import run_import_job, send_password_reset_email, send_verification_email
 from tenancy.scoping import set_current_institution
 
 User = get_user_model()
@@ -361,3 +365,92 @@ class PasswordResetConfirmView(APIView):
         user.set_password(serializer.validated_data["password"])
         user.save(update_fields=["password", "updated_at"])
         return success_response(message="Password has been reset. You can now log in.")
+
+
+# --------------------------------------------------------------------------- #
+# Bulk CSV import                                                             #
+# --------------------------------------------------------------------------- #
+
+
+def _import_report_response(result):
+    return Response(
+        {
+            "status": "success",
+            "data": result.summary,
+            "message": result.message,
+            "errors": result.errors or None,
+        },
+        status=status.HTTP_200_OK,
+    )
+
+
+class _BaseImportView(APIView):
+    permission_classes = [IsSchoolAdmin]
+    kind = None
+    importer = None
+
+    def post(self, request):
+        serializer = ImportUploadSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        upload = serializer.validated_data["file"]
+
+        try:
+            text = decode_upload(upload.name, upload.read())
+        except ImportFileError as exc:
+            return error_response(str(exc))
+
+        institution = request.user.institution
+        row_estimate = text.count("\n")
+
+        if row_estimate <= settings.IMPORT_SYNC_MAX_ROWS:
+            try:
+                result = self.importer(institution, text)
+            except ImportFileError as exc:
+                return error_response(str(exc))
+            return _import_report_response(result)
+
+        job = ImportJob.all_objects.create(
+            institution=institution,
+            kind=self.kind,
+            filename=upload.name or "",
+            total_rows=row_estimate,
+            created_by=request.user,
+        )
+        run_import_job.delay(str(job.id), str(institution.id), self.kind, text)
+        return Response(
+            {
+                "status": "success",
+                "data": {"job_id": str(job.id), "status": job.status},
+                "message": "Import queued for processing. Poll the job for results.",
+                "errors": None,
+            },
+            status=status.HTTP_202_ACCEPTED,
+        )
+
+
+class StudentImportView(_BaseImportView):
+    kind = ImportJob.Kind.STUDENT
+    importer = staticmethod(import_students)
+
+
+class CourseImportView(_BaseImportView):
+    kind = ImportJob.Kind.COURSE
+    importer = staticmethod(import_courses)
+
+
+class ImportJobDetailView(APIView):
+    permission_classes = [IsSchoolAdmin]
+
+    def get(self, request, pk):
+        job = ImportJob.all_objects.filter(institution=request.user.institution, pk=pk).first()
+        if job is None:
+            return error_response("Import job not found.", http_status=status.HTTP_404_NOT_FOUND)
+        return Response(
+            {
+                "status": "success",
+                "data": ImportJobSerializer(job).data,
+                "message": job.message,
+                "errors": job.errors or None,
+            },
+            status=status.HTTP_200_OK,
+        )

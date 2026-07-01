@@ -1,12 +1,15 @@
+import io
+
 from django.conf import settings
 from django.core import mail
-from django.test import TestCase
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import TestCase, override_settings
 from django.urls import reverse
 from rest_framework import status
 from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.test import APITestCase
 
-from accounts.models import Enrolment, Faculty, Role, User
+from accounts.models import Course, Department, Enrolment, Faculty, ImportJob, Role, User
 from accounts.services import validate_credit_load
 from config.celery import app as celery_app
 from tenancy.models import Institution
@@ -608,3 +611,250 @@ class CreditLoadServiceTests(TestCase):
         with self.assertRaises(DRFValidationError):
             validate_credit_load(self.inst, 30)
         validate_credit_load(self.inst, 18)
+
+
+def _csv_upload(content, name="data.csv"):
+    return SimpleUploadedFile(name, content.encode("utf-8"), content_type="text/csv")
+
+
+def _xlsx_upload(rows, name="data.xlsx"):
+    from openpyxl import Workbook
+
+    workbook = Workbook()
+    sheet = workbook.active
+    for row in rows:
+        sheet.append(list(row))
+    buffer = io.BytesIO()
+    workbook.save(buffer)
+    return SimpleUploadedFile(
+        name,
+        buffer.getvalue(),
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
+
+def _make_department(institution, dept_code="CSC"):
+    set_current_institution(institution)
+    faculty = Faculty.objects.create(name="Engineering", code="ENG")
+    department = Department.objects.create(faculty=faculty, name="Computer Science", code=dept_code)
+    clear_current_institution()
+    return department
+
+
+STUDENT_HEADER = "full_name,email,matric_number,department_code,current_level\n"
+VALID_STUDENTS = STUDENT_HEADER + (
+    "Ada Lovelace,ada@futo.edu,FUTO/2024/001,CSC,100\n"
+    "Bola Ade,bola@futo.edu,FUTO/2024/002,CSC,200\n"
+)
+
+
+class BulkImportTests(APITestCase):
+    def setUp(self):
+        self.inst = Institution.objects.create(name="FUTO", code="futo")
+        self.admin = _member(self.inst, "admin@futo.edu", Role.SCHOOL_ADMIN)
+        self.dept = _make_department(self.inst)
+        self.client.force_authenticate(self.admin)
+
+    def _import(self, name, content):
+        return self.client.post(reverse(name), {"file": _csv_upload(content)}, format="multipart")
+
+    def test_student_import_creates_scoped_records(self):
+        response = self._import("import-students", VALID_STUDENTS)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["status"], "success")
+        self.assertEqual(response.data["data"]["created"], 2)
+        self.assertEqual(response.data["data"]["skipped"], 0)
+        self.assertIsNone(response.data["errors"])
+
+        students = User.objects.filter(institution=self.inst, role=Role.STUDENT)
+        self.assertEqual(students.count(), 2)
+        ada = students.get(email="ada@futo.edu")
+        self.assertEqual(ada.identifier, "FUTO/2024/001")
+        self.assertEqual(ada.department, self.dept)
+        self.assertEqual(ada.current_level, 100)
+        self.assertFalse(ada.is_verified)
+        self.assertFalse(ada.has_usable_password())
+
+    def test_student_import_reports_row_errors(self):
+        content = STUDENT_HEADER + (
+            "Good Student,good@futo.edu,M1,CSC,100\n"
+            "No Email,,M2,CSC,200\n"
+            "Bad Dept,bad@futo.edu,M3,MEC,300\n"
+            "Bad Level,lvl@futo.edu,M4,CSC,seven\n"
+        )
+        response = self._import("import-students", content)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["data"]["created"], 1)
+        self.assertEqual(response.data["data"]["skipped"], 3)
+
+        rows = {entry["row"]: entry["errors"] for entry in response.data["errors"]}
+        self.assertEqual(set(rows), {3, 4, 5})
+        self.assertTrue(any("email" in m for m in rows[3]))
+        self.assertTrue(any("MEC" in m for m in rows[4]))
+        self.assertTrue(any("number" in m for m in rows[5]))
+        self.assertEqual(User.objects.filter(institution=self.inst, role=Role.STUDENT).count(), 1)
+
+    def test_student_import_handles_duplicates(self):
+        User.objects.create_user(
+            email="dup@futo.edu",
+            full_name="Existing",
+            role=Role.STUDENT,
+            institution=self.inst,
+            identifier="M1",
+        )
+        content = STUDENT_HEADER + (
+            "New One,new1@futo.edu,M1,CSC,100\n"
+            "New Two,new2@futo.edu,M9,CSC,100\n"
+            "New Three,new3@futo.edu,M9,CSC,100\n"
+        )
+        response = self._import("import-students", content)
+
+        self.assertEqual(response.data["data"]["created"], 1)
+        self.assertEqual(response.data["data"]["skipped"], 2)
+
+    def test_course_import_weight_fallback_and_override(self):
+        content = (
+            "code,title,credit_units,level,department_code,ca_weight,exam_weight\n"
+            "MTH 101,Calculus,3,100,CSC,,\n"
+            "CSC 201,Algorithms,4,200,CSC,30,70\n"
+        )
+        response = self._import("import-courses", content)
+
+        self.assertEqual(response.data["data"]["created"], 2)
+        courses = Course.all_objects.filter(institution=self.inst)
+        mth = courses.get(code="MTH 101")
+        self.assertIsNone(mth.ca_weight)
+        self.assertEqual(mth.effective_ca_weight, 40)
+        csc = courses.get(code="CSC 201")
+        self.assertEqual(csc.ca_weight, 30)
+        self.assertEqual(csc.level, 200)
+
+    def test_course_import_reports_bad_credit_units(self):
+        content = "code,title,credit_units,level,department_code\nMTH 101,Calculus,three,100,CSC\n"
+        response = self._import("import-courses", content)
+
+        self.assertEqual(response.data["data"]["created"], 0)
+        self.assertEqual(response.data["data"]["skipped"], 1)
+        self.assertTrue(any("credit_units" in m for m in response.data["errors"][0]["errors"]))
+
+    def test_course_code_duplicate_detected_case_insensitively(self):
+        set_current_institution(self.inst)
+        Course.objects.create(
+            department=self.dept, code="CSC 101", title="Intro", credit_units=3, level=100
+        )
+        clear_current_institution()
+        content = "code,title,credit_units,level,department_code\ncsc 101,Intro Again,3,100,csc\n"
+        response = self._import("import-courses", content)
+
+        self.assertEqual(response.data["data"]["created"], 0)
+        self.assertEqual(response.data["data"]["skipped"], 1)
+        self.assertTrue(any("already exists" in m for m in response.data["errors"][0]["errors"]))
+
+    def test_import_is_tenant_isolated(self):
+        self._import("import-students", VALID_STUDENTS)
+        futo_count = User.objects.filter(institution=self.inst, role=Role.STUDENT).count()
+        self.assertEqual(futo_count, 2)
+
+        topfaith = Institution.objects.create(name="Topfaith", code="topfaith")
+        tf_admin = _member(topfaith, "admin@tf.edu", Role.SCHOOL_ADMIN)
+        self.client.force_authenticate(tf_admin)
+        response = self._import("import-students", VALID_STUDENTS)
+
+        self.assertEqual(response.data["data"]["created"], 0)
+        self.assertTrue(
+            all(any("not found" in m for m in entry["errors"]) for entry in response.data["errors"])
+        )
+        self.assertEqual(
+            User.objects.filter(institution=self.inst, role=Role.STUDENT).count(), futo_count
+        )
+        self.assertEqual(User.objects.filter(institution=topfaith, role=Role.STUDENT).count(), 0)
+
+    def test_cannot_poll_another_institutions_job(self):
+        job = ImportJob.all_objects.create(
+            institution=self.inst,
+            kind=ImportJob.Kind.STUDENT,
+            status=ImportJob.Status.COMPLETED,
+        )
+        topfaith = Institution.objects.create(name="Topfaith", code="topfaith")
+        tf_admin = _member(topfaith, "admin@tf.edu", Role.SCHOOL_ADMIN)
+        self.client.force_authenticate(tf_admin)
+
+        response = self.client.get(reverse("import-job-detail", args=[job.id]))
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_student_role_cannot_import(self):
+        student = _member(self.inst, "stud@futo.edu", Role.STUDENT)
+        self.client.force_authenticate(student)
+        response = self._import("import-students", VALID_STUDENTS)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_xlsx_student_import_creates_records(self):
+        upload = _xlsx_upload(
+            [
+                ["full_name", "email", "matric_number", "department_code", "current_level"],
+                ["Ada Lovelace", "ada@futo.edu", "FUTO/2024/001", "CSC", 100],
+                ["Bola Ade", "bola@futo.edu", "FUTO/2024/002", "CSC", 200],
+            ]
+        )
+        response = self.client.post(
+            reverse("import-students"), {"file": upload}, format="multipart"
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["data"]["created"], 2)
+        self.assertIsNone(response.data["errors"])
+        ada = User.objects.get(institution=self.inst, email="ada@futo.edu")
+        self.assertEqual(ada.identifier, "FUTO/2024/001")
+        self.assertEqual(ada.current_level, 100)
+        self.assertEqual(ada.department, self.dept)
+
+    def test_lowercase_department_code_resolves_case_insensitively(self):
+        content = STUDENT_HEADER + "Ada Lovelace,ada@futo.edu,FUTO/2024/001,csc,100\n"
+        response = self._import("import-students", content)
+
+        self.assertEqual(response.data["data"]["created"], 1)
+        self.assertEqual(response.data["data"]["skipped"], 0)
+        ada = User.objects.get(institution=self.inst, email="ada@futo.edu")
+        self.assertEqual(ada.department, self.dept)
+
+    def test_rejects_non_csv_file(self):
+        upload = SimpleUploadedFile("data.txt", b"x,y\n1,2\n", content_type="text/plain")
+        response = self.client.post(
+            reverse("import-students"), {"file": upload}, format="multipart"
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    @override_settings(IMPORT_MAX_FILE_BYTES=16)
+    def test_rejects_oversized_file(self):
+        response = self._import("import-students", VALID_STUDENTS)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+
+class BulkImportAsyncTests(APITestCase):
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        celery_app.conf.task_always_eager = True
+        celery_app.conf.task_eager_propagates = True
+
+    def setUp(self):
+        self.inst = Institution.objects.create(name="FUTO", code="futo")
+        self.admin = _member(self.inst, "admin@futo.edu", Role.SCHOOL_ADMIN)
+        _make_department(self.inst)
+        self.client.force_authenticate(self.admin)
+
+    @override_settings(IMPORT_SYNC_MAX_ROWS=0)
+    def test_large_file_is_queued_and_job_is_pollable(self):
+        response = self.client.post(
+            reverse("import-students"), {"file": _csv_upload(VALID_STUDENTS)}, format="multipart"
+        )
+        self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
+        job_id = response.data["data"]["job_id"]
+
+        poll = self.client.get(reverse("import-job-detail", args=[job_id]))
+        self.assertEqual(poll.status_code, status.HTTP_200_OK)
+        self.assertEqual(poll.data["data"]["status"], "completed")
+        self.assertEqual(poll.data["data"]["created_count"], 2)
+        self.assertEqual(User.objects.filter(institution=self.inst, role=Role.STUDENT).count(), 2)
