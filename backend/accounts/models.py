@@ -281,10 +281,46 @@ class Enrolment(AcademicBase):
         return f"{self.student.full_name} → {self.course.code} ({self.session.name})"
 
 
+class CourseAssignment(AcademicBase):
+    """Links a lecturer to a course they teach in a specific session + semester.
+
+    The results pipeline enforces "a lecturer can only enter results for their
+    assigned courses" via ``services.lecturer_can_access_course``.
+    """
+
+    lecturer = models.ForeignKey(
+        User,
+        on_delete=models.PROTECT,
+        related_name="course_assignments",
+        limit_choices_to={"role": Role.LECTURER},
+    )
+    course = models.ForeignKey(Course, on_delete=models.PROTECT, related_name="assignments")
+    session = models.ForeignKey(
+        Session, on_delete=models.PROTECT, related_name="course_assignments"
+    )
+    semester = models.ForeignKey(
+        Semester, on_delete=models.PROTECT, related_name="course_assignments"
+    )
+
+    class Meta:
+        db_table = "accounts_course_assignment"
+        ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["lecturer", "course", "session", "semester"],
+                name="uniq_assignment_per_lecturer_course_term",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.lecturer.full_name} → {self.course.code} ({self.session.name})"
+
+
 class ImportJob(AcademicBase):
     class Kind(models.TextChoices):
         STUDENT = "student", "Student"
         COURSE = "course", "Course"
+        ASSIGNMENT = "assignment", "Assignment"
 
     class Status(models.TextChoices):
         PENDING = "pending", "Pending"

@@ -9,8 +9,19 @@ from rest_framework import status
 from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.test import APITestCase
 
-from accounts.models import Course, Department, Enrolment, Faculty, ImportJob, Role, User
-from accounts.services import validate_credit_load
+from accounts.models import (
+    Course,
+    CourseAssignment,
+    Department,
+    Enrolment,
+    Faculty,
+    ImportJob,
+    Role,
+    Semester,
+    Session,
+    User,
+)
+from accounts.services import lecturer_can_access_course, validate_credit_load
 from config.celery import app as celery_app
 from tenancy.models import Institution
 from tenancy.scoping import clear_current_institution, set_current_institution
@@ -858,3 +869,173 @@ class BulkImportAsyncTests(APITestCase):
         self.assertEqual(poll.data["data"]["status"], "completed")
         self.assertEqual(poll.data["data"]["created_count"], 2)
         self.assertEqual(User.objects.filter(institution=self.inst, role=Role.STUDENT).count(), 2)
+
+
+def _academic_chain(institution, dept_code="CSC", course_code="CSC 101", session_name="2024/2025"):
+    set_current_institution(institution)
+    faculty = Faculty.objects.create(name="Engineering", code=f"ENG-{dept_code}")
+    dept = Department.objects.create(faculty=faculty, name="Computer Science", code=dept_code)
+    session = Session.objects.create(
+        name=session_name, start_date="2024-09-01", end_date="2025-07-31"
+    )
+    semester = Semester.objects.create(
+        session=session, name="First", start_date="2024-09-01", end_date="2024-12-20"
+    )
+    course = Course.objects.create(
+        department=dept, code=course_code, title="Intro to CS", credit_units=3, level=100
+    )
+    clear_current_institution()
+    return {"dept": dept, "session": session, "semester": semester, "course": course}
+
+
+def _lecturer(institution, email="lect@futo.edu", department=None):
+    lecturer = _member(institution, email, Role.LECTURER)
+    if department is not None:
+        lecturer.department = department
+        lecturer.save(update_fields=["department"])
+    return lecturer
+
+
+class CourseAssignmentTests(APITestCase):
+    def setUp(self):
+        self.inst = Institution.objects.create(name="FUTO", code="futo")
+        self.admin = _member(self.inst, "admin@futo.edu", Role.SCHOOL_ADMIN)
+        self.chain = _academic_chain(self.inst)
+        self.lecturer = _lecturer(self.inst, department=self.chain["dept"])
+        self.client.force_authenticate(self.admin)
+
+    def _payload(self, **overrides):
+        payload = {
+            "lecturer": str(self.lecturer.id),
+            "course": str(self.chain["course"].id),
+            "session": str(self.chain["session"].id),
+            "semester": str(self.chain["semester"].id),
+        }
+        payload.update(overrides)
+        return payload
+
+    def _create(self, **overrides):
+        return self.client.post(
+            reverse("assignment-list"), self._payload(**overrides), format="json"
+        )
+
+    def test_admin_can_assign_lecturer_and_it_is_scoped(self):
+        response = self._create()
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["status"], "success")
+        assignment = CourseAssignment.all_objects.get(id=response.data["data"]["id"])
+        self.assertEqual(assignment.institution, self.inst)
+        self.assertEqual(assignment.lecturer, self.lecturer)
+        self.assertEqual(assignment.course, self.chain["course"])
+
+    def test_duplicate_assignment_rejected(self):
+        self._create()
+        response = self._create()
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_only_lecturers_can_be_assigned(self):
+        student = _member(self.inst, "stud@futo.edu", Role.STUDENT)
+        response = self._create(lecturer=str(student.id))
+        # Student is not in the lecturer-scoped queryset -> field validation error.
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("lecturer", response.data["errors"])
+
+    def test_access_helper_true_for_assigned_and_false_otherwise(self):
+        self._create()
+        course, session, semester = (
+            self.chain["course"],
+            self.chain["session"],
+            self.chain["semester"],
+        )
+        self.assertTrue(lecturer_can_access_course(self.lecturer, course, session, semester))
+
+        other_lecturer = _lecturer(self.inst, "other@futo.edu", department=self.chain["dept"])
+        self.assertFalse(lecturer_can_access_course(other_lecturer, course, session, semester))
+
+        student = _member(self.inst, "stud@futo.edu", Role.STUDENT)
+        self.assertFalse(lecturer_can_access_course(student, course, session, semester))
+
+    def test_can_list_and_remove_assignment(self):
+        created = self._create().data["data"]["id"]
+        listed = self.client.get(reverse("assignment-list"))
+        self.assertEqual(len(listed.data["data"]), 1)
+
+        removed = self.client.delete(reverse("assignment-detail", args=[created]))
+        self.assertEqual(removed.status_code, status.HTTP_200_OK)
+        self.assertFalse(CourseAssignment.all_objects.filter(id=created).exists())
+
+    def test_non_admin_role_forbidden(self):
+        self.client.force_authenticate(self.lecturer)
+        response = self._create()
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_hod_can_assign_within_department_only(self):
+        hod = _member(self.inst, "hod@futo.edu", Role.HOD)
+        hod.department = self.chain["dept"]
+        hod.save(update_fields=["department"])
+        self.client.force_authenticate(hod)
+
+        ok = self._create()
+        self.assertEqual(ok.status_code, status.HTTP_201_CREATED)
+
+        # A course in a different department is out of the HOD's scope.
+        other = _academic_chain(
+            self.inst, dept_code="MEC", course_code="MEC 101", session_name="2025/2026"
+        )
+        other_lecturer = _lecturer(self.inst, "meclect@futo.edu", department=other["dept"])
+        blocked = self.client.post(
+            reverse("assignment-list"),
+            {
+                "lecturer": str(other_lecturer.id),
+                "course": str(other["course"].id),
+                "session": str(other["session"].id),
+                "semester": str(other["semester"].id),
+            },
+            format="json",
+        )
+        self.assertEqual(blocked.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("course", blocked.data["errors"])
+
+    def test_assignments_are_tenant_isolated(self):
+        self._create()
+
+        topfaith = Institution.objects.create(name="Topfaith", code="topfaith")
+        tf_admin = _member(topfaith, "admin@tf.edu", Role.SCHOOL_ADMIN)
+        self.client.force_authenticate(tf_admin)
+
+        # Cannot see the first institution's assignments.
+        listed = self.client.get(reverse("assignment-list"))
+        self.assertEqual(len(listed.data["data"]), 0)
+
+        # Cannot create against the first institution's course/lecturer.
+        blocked = self._create()
+        self.assertEqual(blocked.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(CourseAssignment.all_objects.filter(institution=self.inst).count(), 1)
+        self.assertEqual(CourseAssignment.all_objects.filter(institution=topfaith).count(), 0)
+
+
+class CourseAssignmentImportTests(APITestCase):
+    def setUp(self):
+        self.inst = Institution.objects.create(name="FUTO", code="futo")
+        self.admin = _member(self.inst, "admin@futo.edu", Role.SCHOOL_ADMIN)
+        self.chain = _academic_chain(self.inst)
+        self.lecturer = _lecturer(self.inst, department=self.chain["dept"])
+        self.client.force_authenticate(self.admin)
+
+    def test_bulk_assignment_import_creates_and_reports(self):
+        content = (
+            "lecturer_email,course_code,session,semester\n"
+            "lect@futo.edu,csc 101,2024/2025,First\n"
+            "missing@futo.edu,CSC 101,2024/2025,First\n"
+        )
+        response = self.client.post(
+            reverse("import-assignments"),
+            {"file": _csv_upload(content)},
+            format="multipart",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["data"]["created"], 1)
+        self.assertEqual(response.data["data"]["skipped"], 1)
+        self.assertEqual(CourseAssignment.all_objects.filter(institution=self.inst).count(), 1)

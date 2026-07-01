@@ -1,6 +1,9 @@
 from django.urls import path
 
 from accounts.views import (
+    AssignmentImportView,
+    CourseAssignmentDetailView,
+    CourseAssignmentListCreateView,
     CourseDetailView,
     CourseImportView,
     CourseListCreateView,
@@ -35,7 +38,10 @@ urlpatterns = [
     path("courses/<uuid:pk>", CourseDetailView.as_view(), name="course-detail"),
     path("enrolments", EnrolmentListCreateView.as_view(), name="enrolment-list"),
     path("enrolments/<uuid:pk>", EnrolmentDetailView.as_view(), name="enrolment-detail"),
+    path("assignments", CourseAssignmentListCreateView.as_view(), name="assignment-list"),
+    path("assignments/<uuid:pk>", CourseAssignmentDetailView.as_view(), name="assignment-detail"),
     path("import/students", StudentImportView.as_view(), name="import-students"),
     path("import/courses", CourseImportView.as_view(), name="import-courses"),
+    path("import/assignments", AssignmentImportView.as_view(), name="import-assignments"),
     path("import/jobs/<uuid:pk>", ImportJobDetailView.as_view(), name="import-job-detail"),
 ]

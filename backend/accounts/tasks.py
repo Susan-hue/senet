@@ -2,9 +2,20 @@ from celery import shared_task
 from django.conf import settings
 from django.core.mail import send_mail
 
-from accounts.importers import ImportFileError, import_courses, import_students
+from accounts.importers import (
+    ImportFileError,
+    import_assignments,
+    import_courses,
+    import_students,
+)
 from accounts.models import ImportJob
 from tenancy.models import Institution
+
+_IMPORTERS = {
+    ImportJob.Kind.STUDENT: import_students,
+    ImportJob.Kind.COURSE: import_courses,
+    ImportJob.Kind.ASSIGNMENT: import_assignments,
+}
 
 
 @shared_task
@@ -49,7 +60,7 @@ def run_import_job(job_id, institution_id, kind, text):
         _fail_import(job, "Institution not found.")
         return
 
-    importer = import_students if kind == ImportJob.Kind.STUDENT else import_courses
+    importer = _IMPORTERS[kind]
     try:
         result = importer(institution, text)
     except ImportFileError as exc:
