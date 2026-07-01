@@ -4,6 +4,7 @@ from rest_framework import serializers
 
 from accounts.models import (
     Course,
+    CourseAssignment,
     Department,
     Enrolment,
     Faculty,
@@ -251,6 +252,34 @@ class EnrolmentSerializer(serializers.ModelSerializer):
             )
         else:
             self.fields["student"].queryset = User.objects.none()
+
+
+class CourseAssignmentSerializer(serializers.ModelSerializer):
+    institution = serializers.PrimaryKeyRelatedField(read_only=True)
+
+    class Meta:
+        model = CourseAssignment
+        fields = [
+            "id",
+            "institution",
+            "lecturer",
+            "course",
+            "session",
+            "semester",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = READ_ONLY_AUDIT
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        institution = get_current_institution()
+        if institution is not None:
+            self.fields["lecturer"].queryset = User.objects.filter(
+                institution=institution, role=Role.LECTURER
+            )
+        else:
+            self.fields["lecturer"].queryset = User.objects.none()
 
 
 class ImportUploadSerializer(serializers.Serializer):

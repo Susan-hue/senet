@@ -21,7 +21,16 @@ from django.db import transaction
 from django.db.models.functions import Upper
 from openpyxl import load_workbook
 
-from accounts.models import Course, Department, Level, Role, User
+from accounts.models import (
+    Course,
+    CourseAssignment,
+    Department,
+    Level,
+    Role,
+    Semester,
+    Session,
+    User,
+)
 
 STUDENT_REQUIRED_COLUMNS = [
     "full_name",
@@ -31,6 +40,8 @@ STUDENT_REQUIRED_COLUMNS = [
     "current_level",
 ]
 COURSE_REQUIRED_COLUMNS = ["code", "title", "credit_units", "level", "department_code"]
+# lecturer_identifier is an optional fallback used when lecturer_email is blank.
+ASSIGNMENT_REQUIRED_COLUMNS = ["lecturer_email", "course_code", "session", "semester"]
 
 _LEVEL_VALUES = sorted(Level.values)
 
@@ -333,5 +344,100 @@ def import_courses(institution, text):
 
     with transaction.atomic():
         Course.all_objects.bulk_create(to_create, batch_size=500)
+
+    return ImportResult(total=len(rows), created=len(to_create), skipped=len(errors), errors=errors)
+
+
+# --------------------------------------------------------------------------- #
+# Course assignments (lecturer -> course, per term)                           #
+# --------------------------------------------------------------------------- #
+
+
+def import_assignments(institution, text):
+    """Bulk-assign lecturers to courses for a session + semester.
+
+    Admin-only in the API; the HOD department scope of the single-assignment
+    endpoint does not apply here.
+    """
+    rows = _read_rows(text, ASSIGNMENT_REQUIRED_COLUMNS)
+
+    lecturers = User.objects.filter(institution=institution, role=Role.LECTURER)
+    by_email = {lecturer.email.lower(): lecturer for lecturer in lecturers}
+    by_identifier = {u.identifier: u for u in lecturers if u.identifier}
+    courses = {c.code.upper(): c for c in Course.all_objects.filter(institution=institution)}
+    sessions = {s.name.upper(): s for s in Session.all_objects.filter(institution=institution)}
+    semesters = {
+        (sem.session_id, sem.name.upper()): sem
+        for sem in Semester.all_objects.filter(institution=institution)
+    }
+
+    existing = set(
+        CourseAssignment.all_objects.filter(institution=institution).values_list(
+            "lecturer_id", "course_id", "session_id", "semester_id"
+        )
+    )
+    seen = set()
+    to_create, errors = [], []
+
+    for number, data in rows:
+        row_errors = []
+        email = data.get("lecturer_email", "").strip().lower()
+        identifier = data.get("lecturer_identifier", "").strip()
+        course_code = data.get("course_code", "").strip()
+        session_name = data.get("session", "").strip()
+        semester_name = data.get("semester", "").strip()
+
+        lecturer = by_email.get(email) if email else by_identifier.get(identifier)
+        if not email and not identifier:
+            row_errors.append("lecturer_email or lecturer_identifier is required")
+        elif lecturer is None:
+            row_errors.append(f"lecturer '{email or identifier}' not found or is not a lecturer")
+
+        course = courses.get(course_code.upper()) if course_code else None
+        if not course_code:
+            row_errors.append("course_code is required")
+        elif course is None:
+            row_errors.append(f"course_code '{course_code}' not found")
+
+        session = sessions.get(session_name.upper()) if session_name else None
+        if not session_name:
+            row_errors.append("session is required")
+        elif session is None:
+            row_errors.append(f"session '{session_name}' not found")
+
+        semester = None
+        if not semester_name:
+            row_errors.append("semester is required")
+        elif session is not None:
+            semester = semesters.get((session.id, semester_name.upper()))
+            if semester is None:
+                row_errors.append(
+                    f"semester '{semester_name}' not found in session '{session_name}'"
+                )
+
+        if lecturer and course and session and semester:
+            key = (lecturer.id, course.id, session.id, semester.id)
+            if key in seen:
+                row_errors.append("duplicate assignment in file")
+            elif key in existing:
+                row_errors.append("assignment already exists")
+
+            if not row_errors:
+                seen.add(key)
+                to_create.append(
+                    CourseAssignment(
+                        institution=institution,
+                        lecturer=lecturer,
+                        course=course,
+                        session=session,
+                        semester=semester,
+                    )
+                )
+
+        if row_errors:
+            errors.append({"row": number, "errors": row_errors})
+
+    with transaction.atomic():
+        CourseAssignment.all_objects.bulk_create(to_create, batch_size=500)
 
     return ImportResult(total=len(rows), created=len(to_create), skipped=len(errors), errors=errors)

@@ -10,20 +10,29 @@ from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from accounts import tokens
-from accounts.importers import ImportFileError, decode_upload, import_courses, import_students
+from accounts.importers import (
+    ImportFileError,
+    decode_upload,
+    import_assignments,
+    import_courses,
+    import_students,
+)
 from accounts.models import (
     Course,
+    CourseAssignment,
     Department,
     Enrolment,
     Faculty,
     ImportJob,
     Programme,
+    Role,
     Semester,
     Session,
 )
-from accounts.permissions import IsSchoolAdmin, IsTenantMember
+from accounts.permissions import CanManageCourseAssignments, IsSchoolAdmin, IsTenantMember
 from accounts.responses import error_response, success_response
 from accounts.serializers import (
+    CourseAssignmentSerializer,
     CourseSerializer,
     DepartmentSerializer,
     EnrolmentSerializer,
@@ -38,7 +47,7 @@ from accounts.serializers import (
     SemesterSerializer,
     SessionSerializer,
 )
-from accounts.services import enrol_student
+from accounts.services import assign_lecturer, enrol_student
 from accounts.tasks import run_import_job, send_password_reset_email, send_verification_email
 from tenancy.scoping import set_current_institution
 
@@ -326,6 +335,40 @@ class EnrolmentDetailView(
     permission_classes = [IsSchoolAdmin]
 
 
+class _AssignmentScopeMixin:
+    """Narrow assignments to the HOD's own department; admins see the whole tenant."""
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        user = self.request.user
+        if user.role == Role.HOD:
+            qs = qs.filter(course__department_id=user.department_id)
+        return qs
+
+
+class CourseAssignmentListCreateView(
+    _AssignmentScopeMixin, TenantActivationMixin, EnvelopeMixin, generics.ListCreateAPIView
+):
+    model = CourseAssignment
+    serializer_class = CourseAssignmentSerializer
+    permission_classes = [CanManageCourseAssignments]
+
+    def perform_create(self, serializer):
+        serializer.instance = assign_lecturer(actor=self.request.user, **serializer.validated_data)
+
+
+class CourseAssignmentDetailView(
+    _AssignmentScopeMixin,
+    TenantActivationMixin,
+    EnvelopeMixin,
+    _ProtectedDestroyMixin,
+    generics.RetrieveDestroyAPIView,
+):
+    model = CourseAssignment
+    serializer_class = CourseAssignmentSerializer
+    permission_classes = [CanManageCourseAssignments]
+
+
 class PasswordResetRequestView(APIView):
     permission_classes = [AllowAny]
 
@@ -436,6 +479,11 @@ class StudentImportView(_BaseImportView):
 class CourseImportView(_BaseImportView):
     kind = ImportJob.Kind.COURSE
     importer = staticmethod(import_courses)
+
+
+class AssignmentImportView(_BaseImportView):
+    kind = ImportJob.Kind.ASSIGNMENT
+    importer = staticmethod(import_assignments)
 
 
 class ImportJobDetailView(APIView):

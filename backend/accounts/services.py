@@ -1,7 +1,7 @@
 from django.db.models import Sum
 from rest_framework import serializers
 
-from accounts.models import Enrolment, Role
+from accounts.models import CourseAssignment, Enrolment, Role
 from tenancy.scoping import get_current_institution
 
 
@@ -84,3 +84,63 @@ def enrol_student(*, student, course, session, semester):
     return Enrolment.objects.create(
         student=student, course=course, session=session, semester=semester
     )
+
+
+def validate_course_assignment(*, actor, lecturer, course, session, semester, institution):
+    """Cross-field rules for a lecturer-to-course assignment.
+
+    ``actor`` is the user making the assignment; an HOD may only assign within
+    their own department. Raises DRF ValidationError on failure.
+    """
+    errors = {}
+
+    if lecturer.role != Role.LECTURER:
+        errors["lecturer"] = "Only users with the lecturer role can be assigned to a course."
+    elif institution is not None and lecturer.institution_id != institution.id:
+        errors["lecturer"] = "Lecturer must belong to the same institution."
+
+    if semester.session_id != session.id:
+        errors["semester"] = "Semester does not belong to the selected session."
+
+    if actor is not None and actor.role == Role.HOD and course.department_id != actor.department_id:
+        errors["course"] = "An HOD can only assign lecturers to courses in their own department."
+
+    if CourseAssignment.objects.filter(
+        lecturer=lecturer, course=course, session=session, semester=semester
+    ).exists():
+        errors["non_field_errors"] = [
+            "This lecturer is already assigned to this course for the selected session and semester."
+        ]
+
+    if errors:
+        raise serializers.ValidationError(errors)
+
+
+def assign_lecturer(*, actor, lecturer, course, session, semester):
+    """Validate and create a course assignment, stamped with the current tenant."""
+    institution = get_current_institution()
+    validate_course_assignment(
+        actor=actor,
+        lecturer=lecturer,
+        course=course,
+        session=session,
+        semester=semester,
+        institution=institution,
+    )
+    return CourseAssignment.objects.create(
+        lecturer=lecturer, course=course, session=session, semester=semester
+    )
+
+
+def lecturer_can_access_course(user, course, session, semester):
+    """Whether ``user`` is a lecturer assigned to ``course`` for the given term.
+
+    Context-independent (uses ``all_objects`` with explicit filters) so the
+    results pipeline can call it from any context to enforce that a lecturer may
+    only enter results for their assigned courses.
+    """
+    if user is None or getattr(user, "role", None) != Role.LECTURER:
+        return False
+    return CourseAssignment.all_objects.filter(
+        lecturer=user, course=course, session=session, semester=semester
+    ).exists()
