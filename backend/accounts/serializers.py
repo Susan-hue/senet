@@ -42,6 +42,73 @@ class LoginSerializer(serializers.Serializer):
     password = serializers.CharField(write_only=True)
 
 
+class MeSerializer(serializers.ModelSerializer):
+    institution_id = serializers.PrimaryKeyRelatedField(source="institution", read_only=True)
+    institution_name = serializers.CharField(
+        source="institution.name", read_only=True, default=None
+    )
+    department_name = serializers.CharField(source="department.name", read_only=True, default=None)
+    faculty_name = serializers.CharField(source="faculty.name", read_only=True, default=None)
+
+    class Meta:
+        model = User
+        fields = [
+            "id",
+            "email",
+            "full_name",
+            "role",
+            "institution_id",
+            "institution_name",
+            "department",
+            "department_name",
+            "faculty",
+            "faculty_name",
+            "current_level",
+            "identifier",
+            "is_verified",
+        ]
+        read_only_fields = fields
+
+
+class UserAdminSerializer(serializers.ModelSerializer):
+    department_name = serializers.CharField(source="department.name", read_only=True, default=None)
+
+    class Meta:
+        model = User
+        fields = [
+            "id",
+            "email",
+            "full_name",
+            "role",
+            "department",
+            "department_name",
+            "current_level",
+            "identifier",
+            "is_active",
+            "is_verified",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["id", "is_verified", "created_at", "updated_at"]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        institution = get_current_institution()
+        if institution is not None:
+            self.fields["department"].queryset = Department.all_objects.filter(
+                institution=institution
+            )
+        else:
+            self.fields["department"].queryset = Department.objects.none()
+
+    def create(self, validated_data):
+        user = User(**validated_data)
+        user.set_unusable_password()
+        user.is_verified = False
+        user.save()
+        return user
+
+
 class PasswordResetRequestSerializer(serializers.Serializer):
     email = serializers.EmailField()
 

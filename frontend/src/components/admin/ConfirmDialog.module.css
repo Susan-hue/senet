@@ -1,0 +1,36 @@
+.message {
+  color: var(--text-muted);
+  font-size: 0.94rem;
+  line-height: 1.6;
+}
+
+.alert {
+  margin-top: 14px;
+}
+
+.danger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 40px;
+  padding: 0 18px;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(241, 100, 108, 0.4);
+  background: var(--danger-soft);
+  color: #ff9297;
+  font: inherit;
+  font-weight: 550;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.danger:hover:not(:disabled) {
+  background: rgba(241, 100, 108, 0.2);
+  border-color: rgba(241, 100, 108, 0.6);
+}
+
+.danger:disabled {
+  opacity: 0.6;
+  cursor: default;
+}

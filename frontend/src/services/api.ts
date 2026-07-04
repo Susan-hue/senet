@@ -66,3 +66,54 @@ export async function apiRequest<T>(
 
   return envelope;
 }
+
+export async function apiUpload<T>(
+  path: string,
+  file: File,
+  token?: string | null,
+  signal?: AbortSignal,
+): Promise<ApiEnvelope<T>> {
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const form = new FormData();
+  form.append("file", file);
+
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, {
+      method: "POST",
+      headers,
+      credentials: "include",
+      body: form,
+      signal,
+    });
+  } catch {
+    throw new ApiError("Network error. Check your connection and try again.", 0, null);
+  }
+
+  let envelope: ApiEnvelope<T> | null = null;
+  try {
+    envelope = (await response.json()) as ApiEnvelope<T>;
+  } catch {
+    envelope = null;
+  }
+
+  if (!envelope) {
+    throw new ApiError(
+      response.ok ? "Unexpected response from the server." : `Upload failed (${response.status}).`,
+      response.status,
+      null,
+    );
+  }
+
+  if (!response.ok || envelope.status === "error") {
+    throw new ApiError(
+      envelope.message || "The import could not be processed.",
+      response.status,
+      envelope.errors ?? null,
+    );
+  }
+
+  return envelope;
+}

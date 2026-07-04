@@ -3,6 +3,8 @@ import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { AuthProvider } from "./context";
 import { useAuth } from "./hooks";
 import { FullPageLoader } from "./components";
+import { ADMIN_ROLES } from "./types";
+import type { Role } from "./types";
 import {
   ForgotPasswordPage,
   LoginPage,
@@ -10,12 +12,30 @@ import {
   ResetPasswordPage,
   VerifyEmailPage,
 } from "./features/auth";
-import { HomePage } from "./features/home";
+import {
+  AcademicStructurePage,
+  AdminLayout,
+  AssignmentsPage,
+  CoursesPage,
+  DashboardPage,
+  ForbiddenPage,
+  ImportsPage,
+  PeoplePage,
+} from "./features/admin";
 
-function ProtectedRoute({ children }: { children: ReactElement }) {
-  const { status } = useAuth();
+function ProtectedRoute({
+  children,
+  roles,
+}: {
+  children: ReactElement;
+  roles?: ReadonlyArray<Role>;
+}) {
+  const { status, user } = useAuth();
   if (status === "loading") return <FullPageLoader />;
   if (status === "unauthenticated") return <Navigate to="/login" replace />;
+  if (roles && !(user?.role && roles.includes(user.role))) {
+    return <Navigate to="/403" replace />;
+  }
   return children;
 }
 
@@ -30,13 +50,30 @@ function AppRoutes() {
   return (
     <Routes>
       <Route
-        path="/"
+        element={
+          <ProtectedRoute roles={ADMIN_ROLES}>
+            <AdminLayout />
+          </ProtectedRoute>
+        }
+      >
+        <Route path="/" element={<Navigate to="/dashboard" replace />} />
+        <Route path="/dashboard" element={<DashboardPage />} />
+        <Route path="/academic-structure" element={<AcademicStructurePage />} />
+        <Route path="/courses" element={<CoursesPage />} />
+        <Route path="/people" element={<PeoplePage />} />
+        <Route path="/assignments" element={<AssignmentsPage />} />
+        <Route path="/imports" element={<ImportsPage />} />
+      </Route>
+
+      <Route
+        path="/403"
         element={
           <ProtectedRoute>
-            <HomePage />
+            <ForbiddenPage />
           </ProtectedRoute>
         }
       />
+
       <Route
         path="/login"
         element={
