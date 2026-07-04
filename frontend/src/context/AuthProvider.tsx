@@ -8,13 +8,8 @@ import {
   logout as logoutRequest,
   refresh as refreshRequest,
 } from "../services/auth";
+import { getMe } from "../services/accounts";
 import { decodeJwt } from "../utils";
-
-function userFromToken(token: string, email: string | null): AuthUser {
-  const payload = decodeJwt(token);
-  const rawId = payload?.user_id;
-  return { id: rawId === undefined ? "" : String(rawId), email };
-}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<AuthStatus>("loading");
@@ -22,10 +17,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const tokenRef = useRef<string | null>(null);
 
-  const apply = useCallback((token: string, email: string | null) => {
+  const apply = useCallback(async (token: string, fallbackEmail: string | null) => {
     tokenRef.current = token;
     setAccessToken(token);
-    setUser(userFromToken(token, email));
+
+    let nextUser: AuthUser;
+    try {
+      const me = await getMe(token);
+      if (me) {
+        nextUser = {
+          id: me.id,
+          email: me.email ?? fallbackEmail,
+          fullName: me.full_name,
+          role: me.role,
+          institutionName: me.institution_name,
+          departmentId: me.department,
+        };
+      } else {
+        throw new Error("empty profile");
+      }
+    } catch {
+      const payload = decodeJwt(token);
+      nextUser = {
+        id: payload?.user_id === undefined ? "" : String(payload.user_id),
+        email: fallbackEmail,
+        fullName: "",
+        role: null,
+        institutionName: null,
+        departmentId: null,
+      };
+    }
+
+    setUser(nextUser);
     setStatus("authenticated");
   }, []);
 
@@ -40,8 +63,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let active = true;
     refreshRequest()
       .then((res) => {
-        if (active && res.data) apply(res.data.access, null);
-        else if (active) clear();
+        if (active && res.data) return apply(res.data.access, null);
+        if (active) clear();
       })
       .catch(() => {
         if (active) clear();
@@ -55,7 +78,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     async (email: string, password: string) => {
       const res = await loginRequest({ email, password });
       if (!res.data) throw new Error("No access token was returned.");
-      apply(res.data.access, email);
+      await apply(res.data.access, email);
     },
     [apply],
   );

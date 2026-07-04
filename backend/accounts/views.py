@@ -40,12 +40,14 @@ from accounts.serializers import (
     ImportJobSerializer,
     ImportUploadSerializer,
     LoginSerializer,
+    MeSerializer,
     PasswordResetConfirmSerializer,
     PasswordResetRequestSerializer,
     ProgrammeSerializer,
     RegisterSerializer,
     SemesterSerializer,
     SessionSerializer,
+    UserAdminSerializer,
 )
 from accounts.services import assign_lecturer, enrol_student
 from accounts.tasks import run_import_job, send_password_reset_email, send_verification_email
@@ -167,6 +169,13 @@ class TokenRefreshView(APIView):
         response = success_response({"access": str(new_refresh.access_token)}, "Token refreshed.")
         _set_refresh_cookie(response, new_refresh)
         return response
+
+
+class MeView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        return success_response(MeSerializer(request.user).data)
 
 
 class LogoutView(APIView):
@@ -367,6 +376,27 @@ class CourseAssignmentDetailView(
     model = CourseAssignment
     serializer_class = CourseAssignmentSerializer
     permission_classes = [CanManageCourseAssignments]
+
+
+class UserListCreateView(TenantActivationMixin, EnvelopeMixin, generics.ListCreateAPIView):
+    model = User
+    serializer_class = UserAdminSerializer
+    permission_classes = [IsSchoolAdmin]
+
+    def get_queryset(self):
+        return User.objects.filter(institution=self.request.user.institution)
+
+    def perform_create(self, serializer):
+        serializer.save(institution=self.request.user.institution)
+
+
+class UserDetailView(TenantActivationMixin, EnvelopeMixin, generics.RetrieveUpdateAPIView):
+    model = User
+    serializer_class = UserAdminSerializer
+    permission_classes = [IsSchoolAdmin]
+
+    def get_queryset(self):
+        return User.objects.filter(institution=self.request.user.institution)
 
 
 class PasswordResetRequestView(APIView):

@@ -21,9 +21,13 @@ from accounts.views import (
     SessionDetailView,
     SessionListCreateView,
     StudentImportView,
+    UserDetailView,
+    UserListCreateView,
 )
 
 urlpatterns = [
+    path("users", UserListCreateView.as_view(), name="user-list"),
+    path("users/<uuid:pk>", UserDetailView.as_view(), name="user-detail"),
     path("faculties", FacultyListCreateView.as_view(), name="faculty-list"),
     path("faculties/<uuid:pk>", FacultyDetailView.as_view(), name="faculty-detail"),
     path("departments", DepartmentListCreateView.as_view(), name="department-list"),
