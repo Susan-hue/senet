@@ -2,8 +2,8 @@ import { useEffect, useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import logoUrl from "../../assets/logo.png";
 import { useAuth } from "../../hooks";
-import { listSessions } from "../../services/accounts";
-import type { Session } from "../../types";
+import { listSemesters, listSessions } from "../../services/accounts";
+import type { Semester, Session } from "../../types";
 import {
   BookIcon,
   GridIcon,
@@ -42,6 +42,7 @@ export function AdminLayout() {
   const { user, accessToken, logout } = useAuth();
   const [navOpen, setNavOpen] = useState(false);
   const [session, setSession] = useState<Session | null>(null);
+  const [semester, setSemester] = useState<Semester | null>(null);
   const location = useLocation();
 
   useEffect(() => {
@@ -51,10 +52,22 @@ export function AdminLayout() {
   useEffect(() => {
     if (!accessToken) return;
     let active = true;
-    listSessions(accessToken)
-      .then((sessions) => {
+    Promise.all([listSessions(accessToken), listSemesters(accessToken)])
+      .then(([sessions, semesters]) => {
         if (!active) return;
-        setSession(sessions.find((s) => s.is_current) ?? sessions[0] ?? null);
+        const current = sessions.find((s) => s.is_current) ?? sessions[0] ?? null;
+        setSession(current);
+        if (!current) return;
+        const now = Date.now();
+        const inSession = semesters.filter((sem) => sem.session === current.id);
+        setSemester(
+          inSession.find(
+            (sem) =>
+              new Date(sem.start_date).getTime() <= now && now <= new Date(sem.end_date).getTime(),
+          ) ??
+            inSession[0] ??
+            null,
+        );
       })
       .catch(() => undefined);
     return () => {
@@ -103,7 +116,10 @@ export function AdminLayout() {
             <div className={styles.sessionCard}>
               <span className={styles.sessionEyebrow}>Active session</span>
               <span className={styles.sessionName}>{session.name}</span>
-              <span className={styles.sessionMeta}>Ends {formatDate(session.end_date)}</span>
+              <span className={styles.sessionMeta}>
+                {semester ? `${semester.name} · ` : ""}ends{" "}
+                {formatDate(semester?.end_date ?? session.end_date)}
+              </span>
             </div>
           ) : null}
           <button type="button" className={styles.signOut} onClick={() => void logout()}>

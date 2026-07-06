@@ -23,6 +23,12 @@
   color: var(--accent-lavender);
 }
 
+.violet {
+  background: rgba(139, 92, 246, 0.12);
+  border-color: rgba(139, 92, 246, 0.32);
+  color: #c4b5fd;
+}
+
 .success {
   background: var(--success-soft);
   border-color: rgba(61, 214, 140, 0.3);

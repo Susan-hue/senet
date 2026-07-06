@@ -171,14 +171,17 @@ export interface Person {
   updated_at: string;
 }
 
-export const ROLE_META: Record<Role, { label: string; tone: "neutral" | "accent" | "warning" }> = {
-  student: { label: "Student", tone: "neutral" },
-  course_rep: { label: "Course Rep", tone: "neutral" },
-  lecturer: { label: "Lecturer", tone: "accent" },
-  course_adviser: { label: "Course Adviser", tone: "accent" },
-  dean: { label: "Dean", tone: "accent" },
-  hod: { label: "HOD", tone: "accent" },
-  exam_officer: { label: "Exam Officer", tone: "accent" },
+export const ROLE_META: Record<
+  Role,
+  { label: string; tone: "neutral" | "accent" | "violet" | "success" | "warning" }
+> = {
+  student: { label: "Student", tone: "accent" },
+  course_rep: { label: "Course Rep", tone: "accent" },
+  lecturer: { label: "Lecturer", tone: "violet" },
+  course_adviser: { label: "Course Adviser", tone: "violet" },
+  dean: { label: "Dean", tone: "success" },
+  hod: { label: "HOD", tone: "success" },
+  exam_officer: { label: "Exam Officer", tone: "success" },
   senate_admin: { label: "Senate Admin", tone: "warning" },
   school_admin: { label: "Admin", tone: "warning" },
   super_admin: { label: "Super Admin", tone: "warning" },

@@ -139,14 +139,14 @@ export function PeoplePage() {
                         <div className={styles.rowActions}>
                           <button
                             type="button"
-                            className={styles.iconBtn}
+                            className={styles.textBtn}
                             onClick={() => setEditing(p)}
                           >
                             Edit
                           </button>
                           <button
                             type="button"
-                            className={[styles.iconBtn, styles.iconDanger].join(" ")}
+                            className={[styles.textBtn, styles.textDanger].join(" ")}
                             onClick={() => setToRemove(p)}
                           >
                             Remove

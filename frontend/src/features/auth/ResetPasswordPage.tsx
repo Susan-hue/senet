@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { FormEvent } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Alert, AuthLayout, Button, Field, StrengthMeter } from "../../components";
+import { ArrowLeftIcon } from "../../components/icons";
 import { resetPassword } from "../../services/auth";
 import { ApiError } from "../../services/api";
 import styles from "./auth.module.css";
@@ -77,9 +78,10 @@ export function ResetPasswordPage() {
       title="Set a new password"
       subtitle="Choose a strong password you haven't used before."
       footer={
-        <>
-          Remembered it? <Link to="/login">Sign in</Link>
-        </>
+        <Link className={styles.backLink} to="/login">
+          <ArrowLeftIcon size={16} />
+          Back to sign in
+        </Link>
       }
     >
       <form className={styles.form} onSubmit={onSubmit} noValidate>

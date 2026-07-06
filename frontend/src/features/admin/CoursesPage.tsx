@@ -9,13 +9,19 @@ import {
   SkeletonTable,
 } from "../../components/admin";
 import { ApiError } from "../../services/api";
-import { createCourse, deleteCourse, listCourses, listDepartments } from "../../services/accounts";
+import {
+  createCourse,
+  deleteCourse,
+  listCourses,
+  listDepartments,
+  updateCourse,
+} from "../../services/accounts";
 import { LEVEL_OPTIONS } from "../../types";
 import type { Course, Department } from "../../types";
 import { useAuth } from "../../hooks";
 import { useAsyncData } from "./useAsyncData";
 import { PageHeader, SelectInput, TextInput, firstError } from "./ui";
-import { PlusIcon, TrashIcon } from "./adminIcons";
+import { PlusIcon } from "./adminIcons";
 import styles from "./admin.module.css";
 
 export function CoursesPage() {
@@ -37,8 +43,8 @@ export function CoursesPage() {
 
   const [deptFilter, setDeptFilter] = useState("");
   const [levelFilter, setLevelFilter] = useState("");
-  const [creating, setCreating] = useState(
-    Boolean((location.state as { create?: boolean } | null)?.create),
+  const [editing, setEditing] = useState<Course | "new" | null>(
+    (location.state as { create?: boolean } | null)?.create ? "new" : null,
   );
   const [toDelete, setToDelete] = useState<Course | null>(null);
 
@@ -54,7 +60,7 @@ export function CoursesPage() {
         title="Courses"
         subtitle={`${courses.length} course${courses.length === 1 ? "" : "s"} across all departments.`}
         actions={
-          <Button onClick={() => setCreating(true)}>
+          <Button onClick={() => setEditing("new")}>
             <PlusIcon size={16} /> Add course
           </Button>
         }
@@ -123,7 +129,7 @@ export function CoursesPage() {
                     <td>
                       <span
                         className={[styles.mono, styles.cellStrong].join(" ")}
-                        style={{ color: "var(--accent-link)" }}
+                        style={{ color: "var(--accent-eyebrow)" }}
                       >
                         {c.code}
                       </span>
@@ -137,13 +143,15 @@ export function CoursesPage() {
                     </td>
                     <td>
                       <div className={styles.rowActions}>
+                        <button type="button" className={styles.textBtn} onClick={() => setEditing(c)}>
+                          Edit
+                        </button>
                         <button
                           type="button"
-                          className={[styles.iconBtn, styles.iconDanger].join(" ")}
+                          className={[styles.textBtn, styles.textDanger].join(" ")}
                           onClick={() => setToDelete(c)}
-                          aria-label={`Delete ${c.code}`}
                         >
-                          <TrashIcon size={16} />
+                          Delete
                         </button>
                       </div>
                     </td>
@@ -155,13 +163,14 @@ export function CoursesPage() {
         )}
       </div>
 
-      {creating ? (
+      {editing ? (
         <CourseModal
+          course={editing === "new" ? null : editing}
           departments={departments}
           token={token}
-          onClose={() => setCreating(false)}
+          onClose={() => setEditing(null)}
           onSaved={() => {
-            setCreating(false);
+            setEditing(null);
             reload();
           }}
         />
@@ -183,23 +192,26 @@ export function CoursesPage() {
 }
 
 function CourseModal({
+  course,
   departments,
   token,
   onClose,
   onSaved,
 }: {
+  course: Course | null;
   departments: Department[];
   token: string;
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const [department, setDepartment] = useState("");
-  const [code, setCode] = useState("");
-  const [title, setTitle] = useState("");
-  const [units, setUnits] = useState("");
-  const [level, setLevel] = useState("");
-  const [ca, setCa] = useState("");
-  const [exam, setExam] = useState("");
+  const isEdit = course !== null;
+  const [department, setDepartment] = useState(course?.department ?? "");
+  const [code, setCode] = useState(course?.code ?? "");
+  const [title, setTitle] = useState(course?.title ?? "");
+  const [units, setUnits] = useState(course ? String(course.credit_units) : "");
+  const [level, setLevel] = useState(course?.level ? String(course.level) : "");
+  const [ca, setCa] = useState(course?.ca_weight != null ? String(course.ca_weight) : "");
+  const [exam, setExam] = useState(course?.exam_weight != null ? String(course.exam_weight) : "");
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [errors, setErrors] = useState<Record<string, string[]> | null>(null);
@@ -214,20 +226,19 @@ function CourseModal({
       title: title.trim(),
       credit_units: Number(units),
       level: level ? Number(level) : null,
+      ca_weight: ca && exam ? Number(ca) : null,
+      exam_weight: ca && exam ? Number(exam) : null,
     };
-    if (ca && exam) {
-      body.ca_weight = Number(ca);
-      body.exam_weight = Number(exam);
-    }
     try {
-      await createCourse(body, token);
+      if (isEdit && course) await updateCourse(course.id, body, token);
+      else await createCourse(body, token);
       onSaved();
     } catch (err) {
       if (err instanceof ApiError) {
         setMessage(err.message);
         setErrors(err.fieldErrors);
       } else {
-        setMessage("Could not create the course.");
+        setMessage("Could not save the course.");
       }
       setSaving(false);
     }
@@ -235,7 +246,7 @@ function CourseModal({
 
   return (
     <Modal
-      title="Add course"
+      title={isEdit ? `Edit ${course.code}` : "Add course"}
       onClose={onClose}
       footer={
         <>
@@ -243,7 +254,7 @@ function CourseModal({
             Cancel
           </Button>
           <Button loading={saving} onClick={submit}>
-            Create course
+            {isEdit ? "Save changes" : "Create course"}
           </Button>
         </>
       }
