@@ -83,6 +83,8 @@ export const deleteSemester = (id: string, t: string) => removeOf(`${ACCOUNTS}/s
 
 // --- Courses ---
 export const listCourses = (t: string) => listOf<Course>(`${ACCOUNTS}/courses`, t);
+export const updateCourse = (id: string, b: Partial<Course>, t: string) =>
+  patchOf<Course>(`${ACCOUNTS}/courses/${id}`, b, t);
 export const createCourse = (b: Partial<Course>, t: string) =>
   createOf<Course>(`${ACCOUNTS}/courses`, b, t);
 export const deleteCourse = (id: string, t: string) => removeOf(`${ACCOUNTS}/courses/${id}`, t);

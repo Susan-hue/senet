@@ -11,9 +11,11 @@ export function LoginPage() {
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [rememberMe, setRememberMe] = useState(true);
   const [loading, setLoading] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({});
+  const [ssoNotice, setSsoNotice] = useState(false);
 
   const fieldError = (key: string) => fieldErrors[key]?.[0];
 
@@ -49,6 +51,18 @@ export function LoginPage() {
     >
       <form className={styles.form} onSubmit={onSubmit} noValidate>
         {formError ? <Alert variant="error">{formError}</Alert> : null}
+        <button type="button" className={styles.sso} onClick={() => setSsoNotice(true)}>
+          <span className={styles.ssoGlyph} aria-hidden="true" />
+          Continue with institution SSO
+        </button>
+        {ssoNotice ? (
+          <Alert variant="info">Institution SSO is not enabled for your school yet.</Alert>
+        ) : null}
+        <div className={styles.divider} aria-hidden="true">
+          <span className={styles.dividerLine} />
+          <span className={styles.dividerText}>or</span>
+          <span className={styles.dividerLine} />
+        </div>
         <Field
           label="Email address"
           type="email"
@@ -75,6 +89,15 @@ export function LoginPage() {
             </Link>
           }
         />
+        <label className={styles.remember}>
+          <input
+            type="checkbox"
+            className={styles.checkbox}
+            checked={rememberMe}
+            onChange={(e) => setRememberMe(e.target.checked)}
+          />
+          Keep me signed in
+        </label>
         <Button type="submit" fullWidth loading={loading}>
           Sign in
         </Button>

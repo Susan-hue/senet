@@ -83,7 +83,7 @@ export function AssignmentsPage() {
         subtitle="Assign lecturers to courses for a session and semester."
       />
 
-      <section className={styles.panel}>
+      <section className={[styles.panel, styles.panelAccent].join(" ")}>
         <div className={styles.panelHead}>
           <h2 className={styles.panelTitle}>New assignment</h2>
         </div>
@@ -159,7 +159,7 @@ export function AssignmentsPage() {
                       <td>
                         {c ? (
                           <>
-                            <span className={styles.mono} style={{ color: "var(--accent-link)" }}>
+                            <span className={styles.mono} style={{ color: "var(--accent-eyebrow)" }}>
                               {c.code}
                             </span>{" "}
                             <span className={styles.cellMuted}>{c.title}</span>
@@ -176,7 +176,7 @@ export function AssignmentsPage() {
                         <div className={styles.rowActions}>
                           <button
                             type="button"
-                            className={[styles.iconBtn, styles.iconDanger].join(" ")}
+                            className={[styles.textBtn, styles.textDanger].join(" ")}
                             onClick={() => setToRemove(a)}
                           >
                             Unassign

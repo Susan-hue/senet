@@ -30,7 +30,9 @@ class MeEndpointTests(APITestCase):
         self.admin = _member(self.inst, "admin@veritas.edu", Role.SCHOOL_ADMIN)
 
     def test_me_requires_authentication(self):
-        self.assertEqual(self.client.get(reverse("auth-me")).status_code, status.HTTP_401_UNAUTHORIZED)
+        self.assertEqual(
+            self.client.get(reverse("auth-me")).status_code, status.HTTP_401_UNAUTHORIZED
+        )
 
     def test_me_returns_role_and_institution(self):
         self.client.force_authenticate(self.admin)
