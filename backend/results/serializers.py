@@ -86,7 +86,16 @@ class CreateResultSerializer(serializers.Serializer):
 
 class ScoreInputSerializer(serializers.Serializer):
     student = serializers.PrimaryKeyRelatedField(queryset=User.objects.none())
-    ca_score = serializers.DecimalField(max_digits=5, decimal_places=2, min_value=Decimal("0"))
+    # Omit ca_score to have it aggregated from the student's graded assessment
+    # items for this course term.
+    ca_score = serializers.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        min_value=Decimal("0"),
+        required=False,
+        allow_null=True,
+        default=None,
+    )
     exam_score = serializers.DecimalField(max_digits=5, decimal_places=2, min_value=Decimal("0"))
 
     def __init__(self, *args, **kwargs):

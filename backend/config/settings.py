@@ -33,6 +33,7 @@ INSTALLED_APPS = [
     "tenancy",
     "accounts",
     "results",
+    "assessments",
 ]
 
 MIDDLEWARE = [
@@ -169,12 +170,36 @@ USE_TZ = True
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 
+MEDIA_URL = "media/"
+MEDIA_ROOT = BASE_DIR / "media"
+
 STORAGES = {
     "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
     "staticfiles": {
         "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
     },
 }
+
+# Supabase Storage exposes an S3-compatible endpoint; when configured, student
+# uploads are stored there instead of on the app server's disk.
+SUPABASE_S3_BUCKET = config("SUPABASE_S3_BUCKET", default="")
+if SUPABASE_S3_BUCKET:
+    STORAGES["default"] = {
+        "BACKEND": "storages.backends.s3.S3Storage",
+        "OPTIONS": {
+            "bucket_name": SUPABASE_S3_BUCKET,
+            "endpoint_url": config("SUPABASE_S3_ENDPOINT_URL"),
+            "access_key": config("SUPABASE_S3_ACCESS_KEY_ID"),
+            "secret_key": config("SUPABASE_S3_SECRET_ACCESS_KEY"),
+            "region_name": config("SUPABASE_S3_REGION", default="eu-central-1"),
+            "default_acl": "private",
+            "file_overwrite": False,
+            "signature_version": "s3v4",
+        },
+    }
+
+ASSESSMENT_MAX_FILE_BYTES = config("ASSESSMENT_MAX_FILE_BYTES", default=10 * 1024 * 1024, cast=int)
+ASSESSMENT_ALLOWED_EXTENSIONS = (".pdf", ".doc", ".docx")
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 if not DEBUG:

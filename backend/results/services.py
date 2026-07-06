@@ -143,9 +143,13 @@ def create_draft_result(*, lecturer, course, session, semester):
     return result
 
 
-def record_score(*, actor, result_id, student, ca_score, exam_score):
+def record_score(*, actor, result_id, student, exam_score, ca_score=None):
     """Create or update the current score row for a student, atomically with
-    its audit entry. Locks the result so a concurrent submit cannot interleave."""
+    its audit entry. Locks the result so a concurrent submit cannot interleave.
+
+    When ``ca_score`` is omitted, it is aggregated from the student's graded
+    assessment items for this course term, so the CA that enters the pipeline
+    comes from real graded work rather than a retyped number."""
     with transaction.atomic():
         result = _locked_result(result_id, actor)
         if not _owns_result(actor, result):
@@ -163,6 +167,13 @@ def record_score(*, actor, result_id, student, ca_score, exam_score):
         ).exists():
             raise ValidationError(
                 {"student": "This student is not enrolled in the course for this term."}
+            )
+
+        if ca_score is None:
+            from assessments.services import aggregate_ca_for_student
+
+            ca_score = aggregate_ca_for_student(
+                result.course, result.session, result.semester, student
             )
 
         ca_max = Decimal(result.course.effective_ca_weight)
