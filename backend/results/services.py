@@ -5,6 +5,7 @@ from rest_framework.exceptions import NotFound, PermissionDenied, ValidationErro
 
 from accounts.models import Enrolment, Role
 from accounts.services import lecturer_can_access_course
+from grading.scales import grade_for_score
 from results.models import (
     LECTURER_EDITABLE_STATUSES,
     AuditAction,
@@ -13,21 +14,6 @@ from results.models import (
     ResultStatus,
     StudentScore,
 )
-
-GRADE_BANDS = [
-    (Decimal("70"), "A"),
-    (Decimal("60"), "B"),
-    (Decimal("50"), "C"),
-    (Decimal("45"), "D"),
-    (Decimal("40"), "E"),
-]
-
-
-def letter_grade(total):
-    for cutoff, letter in GRADE_BANDS:
-        if total >= cutoff:
-            return letter
-    return "F"
 
 
 def _owns_result(actor, result):
@@ -187,7 +173,7 @@ def record_score(*, actor, result_id, student, exam_score, ca_score=None):
             raise ValidationError(errors)
 
         total = ca_score + exam_score
-        grade = letter_grade(total)
+        grade, _points = grade_for_score(result.institution, total)
 
         row = (
             StudentScore.all_objects.select_for_update()
