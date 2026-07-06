@@ -32,6 +32,7 @@ INSTALLED_APPS = [
     "corsheaders",
     "tenancy",
     "accounts",
+    "results",
 ]
 
 MIDDLEWARE = [
