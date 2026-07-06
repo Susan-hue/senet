@@ -10,14 +10,29 @@ import type {
   ImportOutcome,
   ImportRowError,
   ImportSummary,
+  InstitutionConfig,
+  Page,
   Person,
   Programme,
   QueuedImport,
+  Role,
   Semester,
   Session,
 } from "../types";
+import { EMPTY_PAGE } from "../types";
 
 const ACCOUNTS = "/api/v1/accounts";
+
+type QueryParams = Record<string, string | number | boolean | undefined>;
+
+function withQuery(path: string, params: QueryParams) {
+  const search = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== "") search.set(key, String(value));
+  });
+  const qs = search.toString();
+  return qs ? `${path}?${qs}` : path;
+}
 
 export function getMe(token: string) {
   return apiRequest<CurrentUser>("/api/v1/auth/me", { token }).then((r) => r.data);
@@ -25,6 +40,12 @@ export function getMe(token: string) {
 
 function listOf<T>(path: string, token: string) {
   return apiRequest<T[]>(path, { token }).then((r) => r.data ?? []);
+}
+
+function pageOf<T>(path: string, params: QueryParams, token: string) {
+  return apiRequest<Page<T>>(withQuery(path, params), { token }).then(
+    (r) => r.data ?? (EMPTY_PAGE as Page<T>),
+  );
 }
 
 function createOf<T>(path: string, body: unknown, token: string) {
@@ -81,8 +102,23 @@ export const updateSemester = (id: string, b: Partial<Semester>, t: string) =>
   patchOf<Semester>(`${ACCOUNTS}/semesters/${id}`, b, t);
 export const deleteSemester = (id: string, t: string) => removeOf(`${ACCOUNTS}/semesters/${id}`, t);
 
+// --- Institution config ---
+export const getInstitutionConfig = (t: string) =>
+  apiRequest<InstitutionConfig>(`${ACCOUNTS}/config`, { token: t }).then(
+    (r) => r.data ?? { lecturer_ranks: [] },
+  );
+
 // --- Courses ---
-export const listCourses = (t: string) => listOf<Course>(`${ACCOUNTS}/courses`, t);
+export interface CourseListParams {
+  page?: number;
+  page_size?: number;
+  faculty?: string;
+  department?: string;
+  level?: string;
+  search?: string;
+}
+export const listCourses = (t: string, params: CourseListParams = {}) =>
+  pageOf<Course>(`${ACCOUNTS}/courses`, params as QueryParams, t);
 export const updateCourse = (id: string, b: Partial<Course>, t: string) =>
   patchOf<Course>(`${ACCOUNTS}/courses/${id}`, b, t);
 export const createCourse = (b: Partial<Course>, t: string) =>
@@ -90,7 +126,17 @@ export const createCourse = (b: Partial<Course>, t: string) =>
 export const deleteCourse = (id: string, t: string) => removeOf(`${ACCOUNTS}/courses/${id}`, t);
 
 // --- People (users) ---
-export const listUsers = (t: string) => listOf<Person>(`${ACCOUNTS}/users`, t);
+export interface UserListParams {
+  page?: number;
+  page_size?: number;
+  faculty?: string;
+  department?: string;
+  role?: Role;
+  search?: string;
+  is_active?: boolean;
+}
+export const listUsers = (t: string, params: UserListParams = {}) =>
+  pageOf<Person>(`${ACCOUNTS}/users`, params as QueryParams, t);
 export const createUser = (b: Partial<Person>, t: string) =>
   createOf<Person>(`${ACCOUNTS}/users`, b, t);
 export const updateUser = (id: string, b: Partial<Person>, t: string) =>

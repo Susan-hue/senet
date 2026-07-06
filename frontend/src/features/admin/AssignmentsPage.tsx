@@ -21,22 +21,29 @@ export function AssignmentsPage() {
   const { accessToken } = useAuth();
   const token = accessToken ?? "";
 
+  // The form dropdowns load a bounded slice of the directory; the assignments
+  // table itself uses the denormalised names the API returns per row.
   const { data, loading, error, reload } = useAsyncData(
     () =>
       Promise.all([
         listAssignments(token),
-        listUsers(token),
-        listCourses(token),
+        listUsers(token, { role: "lecturer", is_active: true, page_size: 100 }),
+        listCourses(token, { page_size: 100 }),
         listSessions(token),
         listSemesters(token),
       ]),
     [token],
   );
-  const [assignments, users, courses, sessions, semesters] = data ?? [[], [], [], [], []];
+  const [assignments, lecturerPage, coursePage, sessions, semesters] = data ?? [
+    [],
+    null,
+    null,
+    [],
+    [],
+  ];
 
-  const lecturers = users.filter((u) => u.role === "lecturer");
-  const lecturerMap = useMemo(() => mapBy(lecturers, (l) => l.id), [lecturers]);
-  const courseMap = useMemo(() => mapBy(courses, (c) => c.id), [courses]);
+  const lecturers = lecturerPage?.results ?? [];
+  const courses = coursePage?.results ?? [];
   const sessionMap = useMemo(() => mapBy(sessions, (s) => s.id), [sessions]);
   const semesterMap = useMemo(() => mapBy(semesters, (s) => s.id), [semesters]);
 
@@ -150,23 +157,14 @@ export function AssignmentsPage() {
               </thead>
               <tbody>
                 {assignments.map((a) => {
-                  const c = courseMap.get(a.course);
                   return (
                     <tr key={a.id}>
-                      <td className={styles.cellStrong}>
-                        {lecturerMap.get(a.lecturer)?.full_name ?? "—"}
-                      </td>
+                      <td className={styles.cellStrong}>{a.lecturer_name}</td>
                       <td>
-                        {c ? (
-                          <>
-                            <span className={styles.mono} style={{ color: "var(--accent-eyebrow)" }}>
-                              {c.code}
-                            </span>{" "}
-                            <span className={styles.cellMuted}>{c.title}</span>
-                          </>
-                        ) : (
-                          "—"
-                        )}
+                        <span className={styles.mono} style={{ color: "var(--accent-eyebrow)" }}>
+                          {a.course_code}
+                        </span>{" "}
+                        <span className={styles.cellMuted}>{a.course_title}</span>
                       </td>
                       <td className={styles.cellMuted}>{sessionMap.get(a.session)?.name ?? "—"}</td>
                       <td className={styles.cellMuted}>
@@ -195,8 +193,8 @@ export function AssignmentsPage() {
       {toRemove ? (
         <UnassignDialog
           assignment={toRemove}
-          lecturerName={lecturerMap.get(toRemove.lecturer)?.full_name ?? "this lecturer"}
-          courseCode={courseMap.get(toRemove.course)?.code ?? "the course"}
+          lecturerName={toRemove.lecturer_name || "this lecturer"}
+          courseCode={toRemove.course_code || "the course"}
           token={token}
           onClose={() => setToRemove(null)}
           onDone={() => {

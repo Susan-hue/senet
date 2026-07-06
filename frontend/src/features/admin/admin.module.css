@@ -257,6 +257,59 @@
   color: #ff9297;
 }
 
+/* --- Pager --- */
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 12px 18px;
+  border-top: 1px solid var(--border);
+}
+
+.pagerInfo {
+  font-size: 0.8rem;
+  color: var(--text-faint);
+}
+
+.pagerButtons {
+  display: flex;
+  gap: 8px;
+}
+
+.pagerBtn {
+  padding: 6px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: none;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.pagerBtn:hover:not(:disabled) {
+  border-color: rgba(124, 108, 246, 0.5);
+  color: var(--accent-link);
+}
+
+.pagerBtn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.rankNote {
+  display: block;
+  margin-top: 3px;
+  font-size: 0.72rem;
+  color: var(--text-faint);
+}
+
 /* --- Tabs --- */
 .tabs {
   display: flex;

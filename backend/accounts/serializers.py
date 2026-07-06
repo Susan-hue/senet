@@ -72,6 +72,7 @@ class MeSerializer(serializers.ModelSerializer):
 
 class UserAdminSerializer(serializers.ModelSerializer):
     department_name = serializers.CharField(source="department.name", read_only=True, default=None)
+    rank = serializers.CharField(required=False, allow_blank=True, allow_null=True, max_length=100)
 
     class Meta:
         model = User
@@ -84,6 +85,7 @@ class UserAdminSerializer(serializers.ModelSerializer):
             "department_name",
             "current_level",
             "identifier",
+            "rank",
             "is_active",
             "is_verified",
             "created_at",
@@ -100,6 +102,31 @@ class UserAdminSerializer(serializers.ModelSerializer):
             )
         else:
             self.fields["department"].queryset = Department.objects.none()
+
+    def validate_rank(self, value):
+        return (value or "").strip()
+
+    def validate(self, attrs):
+        role = attrs.get("role", getattr(self.instance, "role", None))
+        if role != Role.LECTURER:
+            # A role change away from lecturer drops any stored rank.
+            if attrs.get("rank"):
+                raise serializers.ValidationError(
+                    {"rank": "Only lecturers can have an academic rank."}
+                )
+            if "rank" in attrs or "role" in attrs:
+                attrs["rank"] = ""
+            return attrs
+
+        rank = attrs.get("rank", getattr(self.instance, "rank", ""))
+        if rank:
+            institution = get_current_institution()
+            allowed = institution.lecturer_ranks if institution is not None else []
+            if rank not in allowed:
+                raise serializers.ValidationError(
+                    {"rank": "This rank is not in your institution's configured ladder."}
+                )
+        return attrs
 
     def create(self, validated_data):
         user = User(**validated_data)
@@ -323,6 +350,11 @@ class EnrolmentSerializer(serializers.ModelSerializer):
 
 class CourseAssignmentSerializer(serializers.ModelSerializer):
     institution = serializers.PrimaryKeyRelatedField(read_only=True)
+    # Denormalised display fields so list screens don't have to fetch the
+    # whole user/course directories just to label a row.
+    lecturer_name = serializers.CharField(source="lecturer.full_name", read_only=True)
+    course_code = serializers.CharField(source="course.code", read_only=True)
+    course_title = serializers.CharField(source="course.title", read_only=True)
 
     class Meta:
         model = CourseAssignment
@@ -330,7 +362,10 @@ class CourseAssignmentSerializer(serializers.ModelSerializer):
             "id",
             "institution",
             "lecturer",
+            "lecturer_name",
             "course",
+            "course_code",
+            "course_title",
             "session",
             "semester",
             "created_at",

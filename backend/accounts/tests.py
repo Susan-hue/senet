@@ -440,7 +440,7 @@ class AcademicIsolationTests(APITestCase):
         self.assertEqual(enrolment.status_code, status.HTTP_201_CREATED)
 
         self._as(self.tf_admin)
-        self.assertEqual(self.client.get(reverse("course-list")).data["data"], [])
+        self.assertEqual(self.client.get(reverse("course-list")).data["data"]["results"], [])
         self.assertEqual(self.client.get(reverse("enrolment-list")).data["data"], [])
 
     def test_cannot_enrol_a_student_from_another_institution(self):

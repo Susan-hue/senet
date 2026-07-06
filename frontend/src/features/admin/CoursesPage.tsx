@@ -14,26 +14,51 @@ import {
   deleteCourse,
   listCourses,
   listDepartments,
+  listFaculties,
   updateCourse,
 } from "../../services/accounts";
 import { LEVEL_OPTIONS } from "../../types";
 import type { Course, Department } from "../../types";
 import { useAuth } from "../../hooks";
-import { useAsyncData } from "./useAsyncData";
-import { PageHeader, SelectInput, TextInput, firstError } from "./ui";
+import { useAsyncData, useDebounced } from "./useAsyncData";
+import { PageHeader, Pager, SearchBox, SelectInput, TextInput, firstError } from "./ui";
 import { PlusIcon } from "./adminIcons";
 import styles from "./admin.module.css";
+
+const PAGE_SIZE = 25;
 
 export function CoursesPage() {
   const { accessToken } = useAuth();
   const token = accessToken ?? "";
   const location = useLocation();
 
-  const { data, loading, error, reload } = useAsyncData(
-    () => Promise.all([listCourses(token), listDepartments(token)]),
+  const [query, setQuery] = useState("");
+  const [facultyFilter, setFacultyFilter] = useState("");
+  const [deptFilter, setDeptFilter] = useState("");
+  const [levelFilter, setLevelFilter] = useState("");
+  const [page, setPage] = useState(1);
+  const search = useDebounced(query.trim());
+
+  const refData = useAsyncData(
+    () => Promise.all([listFaculties(token), listDepartments(token)]),
     [token],
   );
-  const [courses, departments] = data ?? [[], []];
+  const [faculties, departments] = refData.data ?? [[], []];
+
+  const { data, loading, error, reload } = useAsyncData(
+    () =>
+      listCourses(token, {
+        page,
+        page_size: PAGE_SIZE,
+        faculty: facultyFilter,
+        department: deptFilter,
+        level: levelFilter,
+        search,
+      }),
+    [token, page, facultyFilter, deptFilter, levelFilter, search],
+  );
+  const courses = data?.results ?? [];
+  const hasFilters = Boolean(search || facultyFilter || deptFilter || levelFilter);
 
   const deptMap = useMemo(() => {
     const m = new Map<string, Department>();
@@ -41,24 +66,31 @@ export function CoursesPage() {
     return m;
   }, [departments]);
 
-  const [deptFilter, setDeptFilter] = useState("");
-  const [levelFilter, setLevelFilter] = useState("");
+  const deptOptions = useMemo(
+    () => departments.filter((d) => !facultyFilter || d.faculty === facultyFilter),
+    [departments, facultyFilter],
+  );
+
   const [editing, setEditing] = useState<Course | "new" | null>(
     (location.state as { create?: boolean } | null)?.create ? "new" : null,
   );
   const [toDelete, setToDelete] = useState<Course | null>(null);
 
-  const filtered = courses.filter(
-    (c) =>
-      (!deptFilter || c.department === deptFilter) &&
-      (!levelFilter || String(c.level) === levelFilter),
-  );
+  function pickFaculty(id: string) {
+    setFacultyFilter(id);
+    if (id && deptFilter && deptMap.get(deptFilter)?.faculty !== id) setDeptFilter("");
+    setPage(1);
+  }
 
   return (
     <div className={styles.page}>
       <PageHeader
         title="Courses"
-        subtitle={`${courses.length} course${courses.length === 1 ? "" : "s"} across all departments.`}
+        subtitle={
+          data
+            ? `${data.count.toLocaleString()} course${data.count === 1 ? "" : "s"}${hasFilters ? " in this view" : " across all departments"}.`
+            : "The course catalogue, one page at a time."
+        }
         actions={
           <Button onClick={() => setEditing("new")}>
             <PlusIcon size={16} /> Add course
@@ -67,14 +99,38 @@ export function CoursesPage() {
       />
 
       <div className={styles.toolbar}>
+        <SearchBox
+          value={query}
+          onChange={(v) => {
+            setQuery(v);
+            setPage(1);
+          }}
+          placeholder="Search by code or title…"
+        />
+        <select
+          className={styles.filter}
+          value={facultyFilter}
+          onChange={(e) => pickFaculty(e.target.value)}
+          aria-label="Filter by faculty"
+        >
+          <option value="">All faculties</option>
+          {faculties.map((f) => (
+            <option key={f.id} value={f.id}>
+              {f.code} — {f.name}
+            </option>
+          ))}
+        </select>
         <select
           className={styles.filter}
           value={deptFilter}
-          onChange={(e) => setDeptFilter(e.target.value)}
+          onChange={(e) => {
+            setDeptFilter(e.target.value);
+            setPage(1);
+          }}
           aria-label="Filter by department"
         >
           <option value="">All departments</option>
-          {departments.map((d) => (
+          {deptOptions.map((d) => (
             <option key={d.id} value={d.id}>
               {d.code} — {d.name}
             </option>
@@ -83,7 +139,10 @@ export function CoursesPage() {
         <select
           className={styles.filter}
           value={levelFilter}
-          onChange={(e) => setLevelFilter(e.target.value)}
+          onChange={(e) => {
+            setLevelFilter(e.target.value);
+            setPage(1);
+          }}
           aria-label="Filter by level"
         >
           <option value="">All levels</option>
@@ -100,66 +159,81 @@ export function CoursesPage() {
           <SkeletonTable rows={6} cols={6} />
         ) : error ? (
           <ErrorState message={error} onRetry={reload} />
-        ) : filtered.length === 0 ? (
+        ) : courses.length === 0 ? (
           <EmptyState
-            title={courses.length === 0 ? "No courses yet" : "No matching courses"}
+            title={hasFilters ? "No matching courses" : "No courses yet"}
             hint={
-              courses.length === 0
-                ? "Add a course or bulk-import your catalogue to get started."
-                : "Try clearing the department or level filter."
+              hasFilters
+                ? "Try a different search, or clear the faculty, department or level filters."
+                : "Add a course or bulk-import your catalogue to get started."
             }
           />
         ) : (
-          <div className={styles.tableWrap}>
-            <table className={styles.table}>
-              <thead>
-                <tr>
-                  <th>Code</th>
-                  <th>Title</th>
-                  <th>Units</th>
-                  <th>Level</th>
-                  <th>Department</th>
-                  <th>CA / Exam</th>
-                  <th aria-label="Actions" />
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((c) => (
-                  <tr key={c.id}>
-                    <td>
-                      <span
-                        className={[styles.mono, styles.cellStrong].join(" ")}
-                        style={{ color: "var(--accent-eyebrow)" }}
-                      >
-                        {c.code}
-                      </span>
-                    </td>
-                    <td className={styles.cellStrong}>{c.title}</td>
-                    <td>{c.credit_units}</td>
-                    <td>{c.level ?? "—"}</td>
-                    <td className={styles.cellMuted}>{deptMap.get(c.department)?.code ?? "—"}</td>
-                    <td className={styles.cellMuted}>
-                      {c.effective_ca_weight} / {c.effective_exam_weight}
-                    </td>
-                    <td>
-                      <div className={styles.rowActions}>
-                        <button type="button" className={styles.textBtn} onClick={() => setEditing(c)}>
-                          Edit
-                        </button>
-                        <button
-                          type="button"
-                          className={[styles.textBtn, styles.textDanger].join(" ")}
-                          onClick={() => setToDelete(c)}
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    </td>
+          <>
+            <div className={styles.tableWrap}>
+              <table className={styles.table}>
+                <thead>
+                  <tr>
+                    <th>Code</th>
+                    <th>Title</th>
+                    <th>Units</th>
+                    <th>Level</th>
+                    <th>Department</th>
+                    <th>CA / Exam</th>
+                    <th aria-label="Actions" />
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {courses.map((c) => (
+                    <tr key={c.id}>
+                      <td>
+                        <span
+                          className={[styles.mono, styles.cellStrong].join(" ")}
+                          style={{ color: "var(--accent-eyebrow)" }}
+                        >
+                          {c.code}
+                        </span>
+                      </td>
+                      <td className={styles.cellStrong}>{c.title}</td>
+                      <td>{c.credit_units}</td>
+                      <td>{c.level ?? "—"}</td>
+                      <td className={styles.cellMuted}>{deptMap.get(c.department)?.code ?? "—"}</td>
+                      <td className={styles.cellMuted}>
+                        {c.effective_ca_weight} / {c.effective_exam_weight}
+                      </td>
+                      <td>
+                        <div className={styles.rowActions}>
+                          <button
+                            type="button"
+                            className={styles.textBtn}
+                            onClick={() => setEditing(c)}
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            className={[styles.textBtn, styles.textDanger].join(" ")}
+                            onClick={() => setToDelete(c)}
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {data ? (
+              <Pager
+                page={data.page}
+                totalPages={data.total_pages}
+                count={data.count}
+                label="courses"
+                onPage={setPage}
+              />
+            ) : null}
+          </>
         )}
       </div>
 

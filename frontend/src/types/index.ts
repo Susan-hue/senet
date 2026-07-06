@@ -5,6 +5,22 @@ export interface ApiEnvelope<T> {
   errors: Record<string, string[]> | null;
 }
 
+export interface Page<T> {
+  count: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+  results: T[];
+}
+
+export const EMPTY_PAGE = {
+  count: 0,
+  page: 1,
+  page_size: 25,
+  total_pages: 1,
+  results: [],
+};
+
 export type Role =
   | "student"
   | "course_rep"
@@ -165,10 +181,15 @@ export interface Person {
   department_name: string | null;
   current_level: number | null;
   identifier: string;
+  rank: string | null;
   is_active: boolean;
   is_verified: boolean;
   created_at: string;
   updated_at: string;
+}
+
+export interface InstitutionConfig {
+  lecturer_ranks: string[];
 }
 
 export const ROLE_META: Record<
@@ -203,7 +224,10 @@ export interface CourseAssignment {
   id: string;
   institution: string;
   lecturer: string;
+  lecturer_name: string;
   course: string;
+  course_code: string;
+  course_title: string;
   session: string;
   semester: string;
   created_at: string;

@@ -13,6 +13,23 @@ class TimeStampedUUIDModel(models.Model):
         abstract = True
 
 
+# Default academic ladder for universities. Colleges of education and
+# polytechnics replace this with the CONPCASS ladder on their own record.
+UNIVERSITY_LECTURER_RANKS = [
+    "Graduate Assistant",
+    "Assistant Lecturer",
+    "Lecturer II",
+    "Lecturer I",
+    "Senior Lecturer",
+    "Associate Professor",
+    "Professor",
+]
+
+
+def default_lecturer_ranks():
+    return list(UNIVERSITY_LECTURER_RANKS)
+
+
 class Institution(TimeStampedUUIDModel):
     GRADING_SCALE_CHOICES = [
         ("5_POINT", "5-Point Scale"),
@@ -51,6 +68,9 @@ class Institution(TimeStampedUUIDModel):
     # Score below which a course is treated as a carryover/fail (varies 40-45%).
     carryover_pass_mark = models.DecimalField(max_digits=5, decimal_places=2, default=40)
 
+    # Ordered set of rank titles a lecturer at this institution may hold.
+    lecturer_ranks = models.JSONField(default=default_lecturer_ranks, blank=True)
+
     enforce_fees_for_results = models.BooleanField(default=False)
     has_external_affiliation = models.BooleanField(default=False)
     has_teaching_practice = models.BooleanField(default=False)
@@ -75,3 +95,8 @@ class Institution(TimeStampedUUIDModel):
             raise ValidationError("CA weight and Exam weight must sum to 100.")
         if self.min_credit_units_per_semester > self.max_credit_units_per_semester:
             raise ValidationError("Minimum credit units cannot exceed the maximum.")
+        ranks = self.lecturer_ranks
+        if not isinstance(ranks, list) or not all(isinstance(r, str) and r.strip() for r in ranks):
+            raise ValidationError("Lecturer ranks must be a list of non-empty names.")
+        if len(set(ranks)) != len(ranks):
+            raise ValidationError("Lecturer ranks must not contain duplicates.")

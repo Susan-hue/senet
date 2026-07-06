@@ -81,7 +81,7 @@ class UsersEndpointTests(APITestCase):
         self.client.force_authenticate(self.admin)
         response = self.client.get(reverse("user-list"))
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        emails = {u["email"] for u in response.data["data"]}
+        emails = {u["email"] for u in response.data["data"]["results"]}
         self.assertIn("admin@veritas.edu", emails)
         self.assertIn("student@veritas.edu", emails)
         self.assertNotIn("outsider@other.edu", emails)
