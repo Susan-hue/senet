@@ -14,6 +14,7 @@ from accounts.views import (
     FacultyDetailView,
     FacultyListCreateView,
     ImportJobDetailView,
+    InstitutionConfigView,
     ProgrammeDetailView,
     ProgrammeListCreateView,
     SemesterDetailView,
@@ -26,6 +27,7 @@ from accounts.views import (
 )
 
 urlpatterns = [
+    path("config", InstitutionConfigView.as_view(), name="institution-config"),
     path("users", UserListCreateView.as_view(), name="user-list"),
     path("users/<uuid:pk>", UserDetailView.as_view(), name="user-detail"),
     path("faculties", FacultyListCreateView.as_view(), name="faculty-list"),

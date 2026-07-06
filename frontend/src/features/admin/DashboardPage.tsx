@@ -28,11 +28,13 @@ export function DashboardPage() {
   const navigate = useNavigate();
   const token = accessToken ?? "";
 
+  // Count-only page requests: the dashboard never pulls the full directory.
   const { data, loading, error, reload } = useAsyncData(
     () =>
       Promise.all([
-        listUsers(token),
-        listCourses(token),
+        listUsers(token, { role: "student", is_active: true, page_size: 1 }),
+        listUsers(token, { role: "lecturer", is_active: true, page_size: 1 }),
+        listCourses(token, { page_size: 1 }),
         listFaculties(token),
         listDepartments(token),
         listProgrammes(token),
@@ -46,17 +48,14 @@ export function DashboardPage() {
 
   const stats = useMemo(() => {
     if (!data) return null;
-    const [users, courses, faculties, departments, programmes, assignments] = data;
-    const students = users.filter((u) => u.role === "student").length;
-    const lecturers = users.filter((u) => u.role === "lecturer");
+    const [students, lecturers, courses, faculties, departments, programmes, assignments] = data;
     const assignedLecturers = new Set(assignments.map((a) => a.lecturer));
-    const unassigned = lecturers.filter((l) => !assignedLecturers.has(l.id)).length;
     return {
-      students,
-      courses: courses.length,
+      students: students.count,
+      courses: courses.count,
       faculties: faculties.length,
-      lecturers: lecturers.length,
-      unassigned,
+      lecturers: lecturers.count,
+      unassigned: Math.max(lecturers.count - assignedLecturers.size, 0),
       departments: departments.length,
       programmes: programmes.length,
     };

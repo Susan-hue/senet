@@ -82,6 +82,9 @@ class User(AbstractBaseUser, PermissionsMixin):
         blank=True,
     )
     identifier = models.CharField(max_length=50, blank=True, default="")
+    # Academic rank for lecturers, validated against the institution's
+    # configured ladder (universities vs CONPCASS). Empty for other roles.
+    rank = models.CharField(max_length=100, blank=True, default="")
     # Current academic year for students; advances each session. Null for staff.
     current_level = models.PositiveSmallIntegerField(choices=Level.choices, null=True, blank=True)
 

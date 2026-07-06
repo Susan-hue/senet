@@ -168,6 +168,47 @@ export function firstError(
   return undefined;
 }
 
+export function Pager({
+  page,
+  totalPages,
+  count,
+  label,
+  onPage,
+}: {
+  page: number;
+  totalPages: number;
+  count: number;
+  label: string;
+  onPage: (page: number) => void;
+}) {
+  if (count === 0) return null;
+  return (
+    <div className={styles.pager}>
+      <span className={styles.pagerInfo}>
+        {count.toLocaleString()} {label} · page {page} of {totalPages}
+      </span>
+      <div className={styles.pagerButtons}>
+        <button
+          type="button"
+          className={styles.pagerBtn}
+          disabled={page <= 1}
+          onClick={() => onPage(page - 1)}
+        >
+          Previous
+        </button>
+        <button
+          type="button"
+          className={styles.pagerBtn}
+          disabled={page >= totalPages}
+          onClick={() => onPage(page + 1)}
+        >
+          Next
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function SearchBox({
   value,
   onChange,

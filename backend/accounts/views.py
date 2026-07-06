@@ -1,7 +1,9 @@
+import uuid
+
 from django.conf import settings
 from django.contrib.auth import authenticate, get_user_model
 from django.core import signing
-from django.db.models import ProtectedError
+from django.db.models import ProtectedError, Q
 from rest_framework import generics, status
 from rest_framework.permissions import SAFE_METHODS, AllowAny, IsAuthenticated
 from rest_framework.response import Response
@@ -29,6 +31,7 @@ from accounts.models import (
     Semester,
     Session,
 )
+from accounts.pagination import DirectoryPagination
 from accounts.permissions import CanManageCourseAssignments, IsSchoolAdmin, IsTenantMember
 from accounts.responses import error_response, success_response
 from accounts.serializers import (
@@ -317,9 +320,46 @@ class SemesterDetailView(CatalogDetailView):
     serializer_class = SemesterSerializer
 
 
+def _parse_uuid(value):
+    try:
+        return uuid.UUID(value)
+    except (TypeError, ValueError):
+        return None
+
+
 class CourseListCreateView(CatalogListCreateView):
     model = Course
     serializer_class = CourseSerializer
+    pagination_class = DirectoryPagination
+
+    def get_queryset(self):
+        params = self.request.query_params
+        qs = super().get_queryset().select_related("department", "institution")
+
+        faculty = params.get("faculty")
+        if faculty:
+            fid = _parse_uuid(faculty)
+            if fid is None:
+                return qs.none()
+            qs = qs.filter(department__faculty_id=fid)
+
+        department = params.get("department")
+        if department:
+            did = _parse_uuid(department)
+            if did is None:
+                return qs.none()
+            qs = qs.filter(department_id=did)
+
+        level = params.get("level")
+        if level:
+            if not level.isdigit():
+                return qs.none()
+            qs = qs.filter(level=int(level))
+
+        search = (params.get("search") or "").strip()
+        if search:
+            qs = qs.filter(Q(code__icontains=search) | Q(title__icontains=search))
+        return qs.order_by("code", "id")
 
 
 class CourseDetailView(CatalogDetailView):
@@ -348,7 +388,7 @@ class _AssignmentScopeMixin:
     """Narrow assignments to the HOD's own department; admins see the whole tenant."""
 
     def get_queryset(self):
-        qs = super().get_queryset()
+        qs = super().get_queryset().select_related("lecturer", "course")
         user = self.request.user
         if user.role == Role.HOD:
             qs = qs.filter(course__department_id=user.department_id)
@@ -382,9 +422,48 @@ class UserListCreateView(TenantActivationMixin, EnvelopeMixin, generics.ListCrea
     model = User
     serializer_class = UserAdminSerializer
     permission_classes = [IsSchoolAdmin]
+    pagination_class = DirectoryPagination
 
     def get_queryset(self):
-        return User.objects.filter(institution=self.request.user.institution)
+        params = self.request.query_params
+        qs = User.objects.filter(institution=self.request.user.institution).select_related(
+            "department"
+        )
+
+        faculty = params.get("faculty")
+        if faculty:
+            fid = _parse_uuid(faculty)
+            if fid is None:
+                return qs.none()
+            # A user belongs to a faculty directly (deans) or through their
+            # department (students, lecturers, HODs).
+            qs = qs.filter(Q(faculty_id=fid) | Q(department__faculty_id=fid))
+
+        department = params.get("department")
+        if department:
+            did = _parse_uuid(department)
+            if did is None:
+                return qs.none()
+            qs = qs.filter(department_id=did)
+
+        role = params.get("role")
+        if role:
+            if role not in Role.values:
+                return qs.none()
+            qs = qs.filter(role=role)
+
+        active = params.get("is_active")
+        if active in ("true", "false"):
+            qs = qs.filter(is_active=active == "true")
+
+        search = (params.get("search") or "").strip()
+        if search:
+            qs = qs.filter(
+                Q(full_name__icontains=search)
+                | Q(email__icontains=search)
+                | Q(identifier__icontains=search)
+            )
+        return qs.order_by("full_name", "id")
 
     def perform_create(self, serializer):
         serializer.save(institution=self.request.user.institution)
@@ -397,6 +476,16 @@ class UserDetailView(TenantActivationMixin, EnvelopeMixin, generics.RetrieveUpda
 
     def get_queryset(self):
         return User.objects.filter(institution=self.request.user.institution)
+
+
+class InstitutionConfigView(APIView):
+    """Read-only institution configuration the admin console needs (rank ladder)."""
+
+    permission_classes = [IsTenantMember]
+
+    def get(self, request):
+        institution = request.user.institution
+        return success_response({"lecturer_ranks": institution.lecturer_ranks})
 
 
 class PasswordResetRequestView(APIView):
