@@ -40,7 +40,7 @@ STUDENT_REQUIRED_COLUMNS = [
     "current_level",
 ]
 COURSE_REQUIRED_COLUMNS = ["code", "title", "credit_units", "level", "department_code"]
-# lecturer_identifier is an optional fallback used when lecturer_email is blank.
+
 ASSIGNMENT_REQUIRED_COLUMNS = ["lecturer_email", "course_code", "session", "semester"]
 
 _LEVEL_VALUES = sorted(Level.values)

@@ -370,3 +370,137 @@ export const RESULT_STATUS_META: Record<
 };
 
 export const LECTURER_ROLES: Role[] = ["lecturer"];
+
+export const STUDENT_ROLES: Role[] = ["student", "course_rep"];
+
+// --------------------------------------------------------------------------- //
+// Continuous assessment                                                       //
+// --------------------------------------------------------------------------- //
+
+export type AssessmentKind = "assignment" | "test" | "project";
+
+export interface AssessmentItem {
+  id: string;
+  institution: string;
+  course: string;
+  course_code: string;
+  course_title: string;
+  session: string;
+  semester: string;
+  created_by: string;
+  title: string;
+  kind: AssessmentKind;
+  max_score: string;
+  weight: string;
+  due_date: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export const ASSESSMENT_KIND_META: Record<
+  AssessmentKind,
+  { label: string; tone: "accent" | "violet" | "success" }
+> = {
+  assignment: { label: "Assignment", tone: "accent" },
+  test: { label: "Test", tone: "violet" },
+  project: { label: "Project", tone: "success" },
+};
+
+export const ASSESSMENT_KIND_OPTIONS = [
+  { value: "assignment", label: "Assignment" },
+  { value: "test", label: "Test" },
+  { value: "project", label: "Project" },
+] as const satisfies ReadonlyArray<{ value: AssessmentKind; label: string }>;
+
+export interface AssessmentSubmission {
+  id: string;
+  item: string;
+  student: string;
+  student_name: string;
+  student_identifier: string;
+  file_url: string | null;
+  original_filename: string;
+  submitted_at: string;
+  is_late: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AssessmentGrade {
+  id: string;
+  item: string;
+  item_title: string;
+  item_max_score: string;
+  item_weight: string;
+  student: string;
+  student_name: string;
+  submission: string | null;
+  score: string;
+  feedback: string;
+  graded_by: string;
+  is_released: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CaSummaryRow {
+  student: string;
+  student_name: string;
+  student_identifier: string;
+  ca_score: string;
+}
+
+// --------------------------------------------------------------------------- //
+// Grading engine (academic standing)                                          //
+// --------------------------------------------------------------------------- //
+
+export interface StandingCourseLine {
+  course: string;
+  course_code: string;
+  credit_units: number;
+  total_score: string;
+  grade: string;
+  grade_points: string;
+  quality_points: string;
+}
+
+export interface StandingTerm {
+  session: string;
+  semester: string;
+  courses: StandingCourseLine[];
+  quality_points: string;
+  credit_units: number;
+  gpa: string | null;
+}
+
+export interface StandingCumulative {
+  method: string;
+  quality_points: string;
+  credit_units: number;
+  cgpa: string | null;
+}
+
+export type StandingBand = "good" | "probation" | "withdrawal" | "";
+
+export interface StudentStanding {
+  student: string;
+  student_name: string;
+  term: StandingTerm | null;
+  cumulative: StandingCumulative;
+  standing: StandingBand;
+  classification: {
+    name: string | null;
+    is_borderline: boolean;
+    borderline_band: string | null;
+  };
+  outstanding_carryovers: Array<{ code: string; title: string }>;
+}
+
+export const STANDING_META: Record<
+  Exclude<StandingBand, "">,
+  { label: string; tone: "success" | "warning" | "danger" }
+> = {
+  good: { label: "Good standing", tone: "success" },
+  probation: { label: "Probation", tone: "warning" },
+  withdrawal: { label: "Withdrawal", tone: "danger" },
+};

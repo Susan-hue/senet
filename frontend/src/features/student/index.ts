@@ -1,0 +1,1 @@
+export { MyResultsPage } from "./MyResultsPage";

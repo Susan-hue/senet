@@ -162,8 +162,11 @@ export function firstError(
 ): string | undefined {
   if (!errors) return undefined;
   for (const k of keys) {
-    const v = errors[k];
-    if (v && v.length) return v[0];
+    // Serializer failures arrive as string arrays; service-level validation
+    // errors arrive as bare strings. Accept both shapes.
+    const v = errors[k] as unknown;
+    if (typeof v === "string" && v) return v;
+    if (Array.isArray(v) && v.length) return String(v[0]);
   }
   return undefined;
 }

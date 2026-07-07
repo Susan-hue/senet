@@ -64,9 +64,7 @@ class User(AbstractBaseUser, PermissionsMixin):
         null=True,
         blank=True,
     )
-    # Scope fields for faculty/department-bound roles (Dean, HOD, Lecturer,
-    # Course Adviser). Deleting the referenced record only clears the scope; it
-    # never deletes the user, so SET_NULL is the safe choice here.
+
     faculty = models.ForeignKey(
         "accounts.Faculty",
         on_delete=models.SET_NULL,
@@ -82,10 +80,8 @@ class User(AbstractBaseUser, PermissionsMixin):
         blank=True,
     )
     identifier = models.CharField(max_length=50, blank=True, default="")
-    # Academic rank for lecturers, validated against the institution's
-    # configured ladder (universities vs CONPCASS). Empty for other roles.
+  
     rank = models.CharField(max_length=100, blank=True, default="")
-    # Current academic year for students; advances each session. Null for staff.
     current_level = models.PositiveSmallIntegerField(choices=Level.choices, null=True, blank=True)
 
     is_verified = models.BooleanField(default=False)

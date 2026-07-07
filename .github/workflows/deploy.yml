@@ -25,8 +25,6 @@ jobs:
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
       - uses: superfly/flyctl-actions/setup-flyctl@master
-      # Deploy from backend/ so the Docker build context is backend/ and the
-      # Dockerfile's COPY paths (requirements.txt, etc.) resolve correctly.
       - run: flyctl deploy --config fly.toml --app senet-backend-jnb --remote-only
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_DEPLOY_TOKEN_BACKEND }}
@@ -42,7 +40,6 @@ jobs:
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
       - uses: superfly/flyctl-actions/setup-flyctl@master
-      # Same context alignment as the backend app; the worker shares the Dockerfile.
       - run: flyctl deploy --config fly.worker.toml --app senet-worker-jnb --remote-only
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_DEPLOY_TOKEN_WORKER }}

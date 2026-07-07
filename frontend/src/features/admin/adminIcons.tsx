@@ -99,3 +99,18 @@ export const TrashIcon = (p: IconProps) => (
     <path d="M10 11v6M14 11v6" />
   </svg>
 );
+
+export const ClipboardIcon = (p: IconProps) => (
+  <svg {...base(p)}>
+    <rect x="5" y="4" width="14" height="17" rx="2" />
+    <path d="M9 4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v1H9Z" />
+    <path d="M9 11h6M9 15h4" />
+  </svg>
+);
+
+export const AwardIcon = (p: IconProps) => (
+  <svg {...base(p)}>
+    <circle cx="12" cy="9" r="6" />
+    <path d="m8.5 14-1.7 7L12 18.5 17.2 21l-1.7-7" />
+  </svg>
+);

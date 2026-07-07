@@ -14,8 +14,6 @@ class TimeStampedUUIDModel(models.Model):
         abstract = True
 
 
-# Default academic ladder for universities. Colleges of education and
-# polytechnics replace this with the CONPCASS ladder on their own record.
 UNIVERSITY_LECTURER_RANKS = [
     "Graduate Assistant",
     "Assistant Lecturer",
@@ -31,8 +29,6 @@ def default_lecturer_ranks():
     return list(UNIVERSITY_LECTURER_RANKS)
 
 
-# Standard Nigerian university 5-point scale. Institutions on other scales
-# (4-point, 7-point, different boundaries) replace this on their own record.
 def default_grade_scale():
     return [
         {"grade": "A", "min_score": 70, "points": 5},
@@ -44,8 +40,6 @@ def default_grade_scale():
     ]
 
 
-# Standard Nigerian degree classification bands; CGPA below the lowest band
-# is a fail. min_cgpa values are strings to keep Decimal precision in JSON.
 def default_classification_bands():
     return [
         {"name": "First Class", "min_cgpa": "4.50"},
@@ -79,37 +73,26 @@ class Institution(TimeStampedUUIDModel):
     pass_mark = models.DecimalField(max_digits=5, decimal_places=2, default=40)
     probation_cgpa_threshold = models.DecimalField(max_digits=4, decimal_places=2, default=1.50)
 
-    # Min/max credit units a student may register per semester (NUC-mandated
-    # defaults; configurable per university).
     min_credit_units_per_semester = models.PositiveSmallIntegerField(default=15)
     max_credit_units_per_semester = models.PositiveSmallIntegerField(default=24)
 
-    # How retaken (carryover) courses count toward CGPA: ALL_ATTEMPTS keeps every
-    # attempt in the CGPA denominator; HIGHEST_ONLY counts only the best attempt
-    # (the failed attempt stays on the transcript but is excluded from the denominator).
     carryover_cgpa_method = models.CharField(
         max_length=20, choices=CARRYOVER_CGPA_METHOD_CHOICES, default="ALL_ATTEMPTS"
     )
-    # Score below which a course is treated as a carryover/fail (varies 40-45%).
     carryover_pass_mark = models.DecimalField(max_digits=5, decimal_places=2, default=40)
 
-    # Letter-grade boundaries and grade points used by the GPA engine.
     grade_scale = models.JSONField(default=default_grade_scale, blank=True)
-    # Degree classification bands (highest first) used for final classification.
+
     classification_bands = models.JSONField(default=default_classification_bands, blank=True)
-    # CGPA below this is flagged for withdrawal (probation uses
-    # probation_cgpa_threshold above).
+ 
     withdrawal_cgpa_threshold = models.DecimalField(max_digits=4, decimal_places=2, default=1.00)
-    # A CGPA within this margin below a classification boundary is flagged for
-    # Senate review — a flag only, never an automatic upgrade.
+ 
     senate_review_margin = models.DecimalField(
         max_digits=3, decimal_places=2, default=Decimal("0.05")
     )
-    # Which result-pipeline state feeds the GPA engine; official grades come
-    # from senate-ratified results unless an institution configures otherwise.
+ 
     gpa_source_status = models.CharField(max_length=20, default="ratified_by_senate")
 
-    # Ordered set of rank titles a lecturer at this institution may hold.
     lecturer_ranks = models.JSONField(default=default_lecturer_ranks, blank=True)
 
     enforce_fees_for_results = models.BooleanField(default=False)
