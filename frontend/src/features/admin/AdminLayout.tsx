@@ -21,6 +21,7 @@ export interface NavItem {
   to: string;
   label: string;
   Icon: (props: { size?: number }) => ReactElement;
+  end?: boolean;
 }
 
 const NAV: NavItem[] = [
@@ -111,10 +112,11 @@ export function AdminLayout({
         </div>
 
         <nav className={styles.nav} aria-label="Primary">
-          {nav.map(({ to, label, Icon }) => (
+          {nav.map(({ to, label, Icon, end }) => (
             <NavLink
               key={to}
               to={to}
+              end={end}
               className={({ isActive }) =>
                 [styles.navItem, isActive ? styles.navActive : ""].join(" ")
               }
