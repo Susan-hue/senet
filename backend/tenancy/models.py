@@ -84,13 +84,13 @@ class Institution(TimeStampedUUIDModel):
     grade_scale = models.JSONField(default=default_grade_scale, blank=True)
 
     classification_bands = models.JSONField(default=default_classification_bands, blank=True)
- 
+
     withdrawal_cgpa_threshold = models.DecimalField(max_digits=4, decimal_places=2, default=1.00)
- 
+
     senate_review_margin = models.DecimalField(
         max_digits=3, decimal_places=2, default=Decimal("0.05")
     )
- 
+
     gpa_source_status = models.CharField(max_length=20, default="ratified_by_senate")
 
     lecturer_ranks = models.JSONField(default=default_lecturer_ranks, blank=True)

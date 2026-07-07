@@ -80,7 +80,7 @@ class User(AbstractBaseUser, PermissionsMixin):
         blank=True,
     )
     identifier = models.CharField(max_length=50, blank=True, default="")
-  
+
     rank = models.CharField(max_length=100, blank=True, default="")
     current_level = models.PositiveSmallIntegerField(choices=Level.choices, null=True, blank=True)
 
