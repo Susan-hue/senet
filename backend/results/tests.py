@@ -1,9 +1,12 @@
 """Results pipeline tests: state machine guards, append-only history, and the
 transactional audit log."""
 
+import threading
 from decimal import Decimal
-from unittest import mock
+from unittest import mock, skipUnless
 
+from django.db import connection, connections
+from django.test import TransactionTestCase
 from django.urls import reverse
 from rest_framework import status
 from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
@@ -48,8 +51,9 @@ def _member(institution, email, role, **extra):
     )
 
 
-class ResultsTestBase(APITestCase):
+class ResultsDataMixin:
     def setUp(self):
+        super().setUp()
         self.inst = Institution.objects.create(name="Veritas University", code="veritas")
         self.faculty = Faculty.all_objects.create(institution=self.inst, name="Science", code="SCI")
         self.other_faculty = Faculty.all_objects.create(
@@ -139,6 +143,10 @@ class ResultsTestBase(APITestCase):
         return list(
             ResultAuditLog.all_objects.filter(result=result).values_list("action", flat=True)
         )
+
+
+class ResultsTestBase(ResultsDataMixin, APITestCase):
+    pass
 
 
 class DraftCreationTests(ResultsTestBase):
@@ -462,6 +470,20 @@ class TransitionGuardTests(ResultsTestBase):
         self.assertEqual(result.status, ResultStatus.SUBMITTED_TO_HOD)
         self.assertEqual(result.returned_reason, "")
 
+    def test_lecturer_cannot_submit_a_sheet_they_do_not_own(self):
+        result = self.make_draft()
+        record_score(
+            actor=self.lecturer,
+            result_id=result.id,
+            student=self.student,
+            ca_score=Decimal("30"),
+            exam_score=Decimal("50"),
+        )
+        with self.assertRaises(PermissionDenied):
+            submit_result(actor=self.unassigned_lecturer, result_id=result.id)
+        result.refresh_from_db()
+        self.assertEqual(result.status, ResultStatus.DRAFT)
+
     def test_concurrent_style_double_approval_rejected(self):
         result = self.make_submitted()
         transition_result(
@@ -584,3 +606,55 @@ class TenantIsolationTests(ResultsTestBase):
         scores = response.data["data"]["scores"]
         self.assertEqual(len(scores), 1)
         self.assertEqual(scores[0]["grade"], "A")
+
+
+@skipUnless(
+    connection.vendor == "postgresql",
+    "select_for_update is a no-op on SQLite; real row locks need Postgres",
+)
+class ConcurrentTransitionTests(ResultsDataMixin, TransactionTestCase):
+    def test_racing_identical_transitions_serialize_on_the_row_lock(self):
+        result = self.make_submitted()
+        barrier = threading.Barrier(2, timeout=10)
+        outcomes = []
+        outcomes_lock = threading.Lock()
+
+        def approve():
+            try:
+                barrier.wait()
+                transition_result(
+                    actor=self.hod,
+                    result_id=result.id,
+                    to_status=ResultStatus.APPROVED_BY_HOD,
+                )
+                outcome = "applied"
+            except ValidationError:
+                outcome = "rejected"
+            except Exception as exc:
+                outcome = f"unexpected: {exc!r}"
+            finally:
+                connections.close_all()
+            with outcomes_lock:
+                outcomes.append(outcome)
+
+        threads = [threading.Thread(target=approve) for _ in range(2)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(timeout=15)
+        self.assertFalse(any(thread.is_alive() for thread in threads))
+
+        # The lock serializes the two transactions: the loser re-reads the
+        # committed APPROVED_BY_HOD state and fails the rule lookup instead of
+        # double-applying or overwriting the winner.
+        self.assertEqual(sorted(outcomes), ["applied", "rejected"])
+        refreshed = CourseResult.all_objects.get(pk=result.id)
+        self.assertEqual(refreshed.status, ResultStatus.APPROVED_BY_HOD)
+        self.assertEqual(
+            ResultAuditLog.all_objects.filter(
+                result_id=result.id,
+                action=AuditAction.STATUS_CHANGED,
+                after={"status": ResultStatus.APPROVED_BY_HOD.value},
+            ).count(),
+            1,
+        )
