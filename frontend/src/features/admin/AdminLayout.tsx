@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import type { ReactElement } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import logoUrl from "../../assets/logo.png";
 import { useAuth } from "../../hooks";
@@ -16,7 +17,13 @@ import {
 } from "./adminIcons";
 import styles from "./AdminLayout.module.css";
 
-const NAV = [
+export interface NavItem {
+  to: string;
+  label: string;
+  Icon: (props: { size?: number }) => ReactElement;
+}
+
+const NAV: NavItem[] = [
   { to: "/dashboard", label: "Dashboard", Icon: GridIcon },
   { to: "/academic-structure", label: "Academic Structure", Icon: LayersIcon },
   { to: "/courses", label: "Courses", Icon: BookIcon },
@@ -38,7 +45,15 @@ function formatDate(value: string) {
   return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
-export function AdminLayout() {
+export function AdminLayout({
+  nav = NAV,
+  brandSub = "Admin Console",
+  rolePill = "Admin",
+}: {
+  nav?: NavItem[];
+  brandSub?: string;
+  rolePill?: string;
+}) {
   const { user, accessToken, logout } = useAuth();
   const [navOpen, setNavOpen] = useState(false);
   const [session, setSession] = useState<Session | null>(null);
@@ -91,12 +106,12 @@ export function AdminLayout() {
           </span>
           <span className={styles.brandText}>
             <span className={styles.brandName}>Senet</span>
-            <span className={styles.brandSub}>Admin Console</span>
+            <span className={styles.brandSub}>{brandSub}</span>
           </span>
         </div>
 
         <nav className={styles.nav} aria-label="Primary">
-          {NAV.map(({ to, label, Icon }) => (
+          {nav.map(({ to, label, Icon }) => (
             <NavLink
               key={to}
               to={to}
@@ -141,7 +156,7 @@ export function AdminLayout() {
           </button>
           <div className={styles.institution}>
             <span className={styles.instName}>{user?.institutionName ?? "Senet"}</span>
-            <span className={styles.adminPill}>Admin</span>
+            <span className={styles.adminPill}>{rolePill}</span>
           </div>
           <div className={styles.topbarRight}>
             <div className={styles.user}>

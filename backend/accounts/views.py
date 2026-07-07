@@ -3,7 +3,7 @@ import uuid
 from django.conf import settings
 from django.contrib.auth import authenticate, get_user_model
 from django.core import signing
-from django.db.models import ProtectedError, Q
+from django.db.models import Exists, OuterRef, ProtectedError, Q
 from rest_framework import generics, status
 from rest_framework.permissions import SAFE_METHODS, AllowAny, IsAuthenticated
 from rest_framework.response import Response
@@ -32,7 +32,13 @@ from accounts.models import (
     Session,
 )
 from accounts.pagination import DirectoryPagination
-from accounts.permissions import CanManageCourseAssignments, IsSchoolAdmin, IsTenantMember
+from accounts.permissions import (
+    CanManageCourseAssignments,
+    CanViewCourseAssignments,
+    CanViewEnrolments,
+    IsSchoolAdmin,
+    IsTenantMember,
+)
 from accounts.responses import error_response, success_response
 from accounts.serializers import (
     CourseAssignmentSerializer,
@@ -370,7 +376,31 @@ class CourseDetailView(CatalogDetailView):
 class EnrolmentListCreateView(TenantActivationMixin, EnvelopeMixin, generics.ListCreateAPIView):
     model = Enrolment
     serializer_class = EnrolmentSerializer
-    permission_classes = [IsSchoolAdmin]
+
+    def get_permissions(self):
+        if self.request.method in SAFE_METHODS:
+            return [CanViewEnrolments()]
+        return [IsSchoolAdmin()]
+
+    def get_queryset(self):
+        qs = super().get_queryset().select_related("student")
+        user = self.request.user
+        if user.role == Role.LECTURER:
+            qs = qs.filter(
+                Exists(
+                    CourseAssignment.all_objects.filter(
+                        lecturer=user,
+                        course=OuterRef("course"),
+                        session=OuterRef("session"),
+                        semester=OuterRef("semester"),
+                    )
+                )
+            )
+        for field in ("course", "session", "semester"):
+            value = _parse_uuid(self.request.query_params.get(field))
+            if value is not None:
+                qs = qs.filter(**{f"{field}_id": value})
+        return qs.order_by("student__full_name", "id")
 
     def perform_create(self, serializer):
         serializer.instance = enrol_student(**serializer.validated_data)
@@ -385,13 +415,16 @@ class EnrolmentDetailView(
 
 
 class _AssignmentScopeMixin:
-    """Narrow assignments to the HOD's own department; admins see the whole tenant."""
+    """Narrow assignments to the HOD's own department and a lecturer to their
+    own rows; admins see the whole tenant."""
 
     def get_queryset(self):
         qs = super().get_queryset().select_related("lecturer", "course")
         user = self.request.user
         if user.role == Role.HOD:
             qs = qs.filter(course__department_id=user.department_id)
+        elif user.role == Role.LECTURER:
+            qs = qs.filter(lecturer=user)
         return qs
 
 
@@ -400,7 +433,11 @@ class CourseAssignmentListCreateView(
 ):
     model = CourseAssignment
     serializer_class = CourseAssignmentSerializer
-    permission_classes = [CanManageCourseAssignments]
+
+    def get_permissions(self):
+        if self.request.method in SAFE_METHODS:
+            return [CanViewCourseAssignments()]
+        return [CanManageCourseAssignments()]
 
     def perform_create(self, serializer):
         serializer.instance = assign_lecturer(actor=self.request.user, **serializer.validated_data)

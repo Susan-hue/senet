@@ -1015,6 +1015,101 @@ class CourseAssignmentTests(APITestCase):
         self.assertEqual(CourseAssignment.all_objects.filter(institution=topfaith).count(), 0)
 
 
+class LecturerReadAccessTests(APITestCase):
+    """Lecturers may read their own assignments and the rosters of courses
+    they teach; writes stay with admins/HODs."""
+
+    def setUp(self):
+        self.inst = Institution.objects.create(name="FUTO", code="futo")
+        self.admin = _member(self.inst, "admin@futo.edu", Role.SCHOOL_ADMIN)
+        self.chain = _academic_chain(self.inst)
+        self.other_chain = _academic_chain(
+            self.inst, dept_code="MEC", course_code="MEC 101", session_name="2025/2026"
+        )
+        self.lecturer = _lecturer(self.inst, department=self.chain["dept"])
+        self.other_lecturer = _lecturer(
+            self.inst, "other@futo.edu", department=self.other_chain["dept"]
+        )
+        self.student = _member(self.inst, "stud@futo.edu", Role.STUDENT)
+
+        set_current_institution(self.inst)
+        self.assignment = CourseAssignment.objects.create(
+            lecturer=self.lecturer,
+            course=self.chain["course"],
+            session=self.chain["session"],
+            semester=self.chain["semester"],
+        )
+        CourseAssignment.objects.create(
+            lecturer=self.other_lecturer,
+            course=self.other_chain["course"],
+            session=self.other_chain["session"],
+            semester=self.other_chain["semester"],
+        )
+        Enrolment.objects.create(
+            student=self.student,
+            course=self.chain["course"],
+            session=self.chain["session"],
+            semester=self.chain["semester"],
+        )
+        other_student = _member(self.inst, "stud2@futo.edu", Role.STUDENT)
+        Enrolment.objects.create(
+            student=other_student,
+            course=self.other_chain["course"],
+            session=self.other_chain["session"],
+            semester=self.other_chain["semester"],
+        )
+        clear_current_institution()
+
+    def test_lecturer_lists_only_their_own_assignments(self):
+        self.client.force_authenticate(self.lecturer)
+        response = self.client.get(reverse("assignment-list"))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        rows = response.data["data"]
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["id"], str(self.assignment.id))
+
+    def test_lecturer_cannot_write_assignments(self):
+        self.client.force_authenticate(self.lecturer)
+        response = self.client.post(reverse("assignment-list"), {}, format="json")
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_student_cannot_list_assignments(self):
+        self.client.force_authenticate(self.student)
+        response = self.client.get(reverse("assignment-list"))
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_lecturer_sees_only_rosters_of_assigned_courses(self):
+        self.client.force_authenticate(self.lecturer)
+        response = self.client.get(reverse("enrolment-list"))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        rows = response.data["data"]
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(str(rows[0]["student"]), str(self.student.id))
+        self.assertEqual(rows[0]["student_name"], self.student.full_name)
+        self.assertEqual(rows[0]["student_identifier"], self.student.identifier)
+
+    def test_enrolment_list_filters_by_course_term(self):
+        self.client.force_authenticate(self.admin)
+        url = reverse("enrolment-list")
+        both = self.client.get(url)
+        self.assertEqual(len(both.data["data"]), 2)
+        filtered = self.client.get(
+            url,
+            {
+                "course": str(self.chain["course"].id),
+                "session": str(self.chain["session"].id),
+                "semester": str(self.chain["semester"].id),
+            },
+        )
+        self.assertEqual(len(filtered.data["data"]), 1)
+        self.assertEqual(str(filtered.data["data"][0]["student"]), str(self.student.id))
+
+    def test_lecturer_cannot_write_enrolments(self):
+        self.client.force_authenticate(self.lecturer)
+        response = self.client.post(reverse("enrolment-list"), {}, format="json")
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+
 class CourseAssignmentImportTests(APITestCase):
     def setUp(self):
         self.inst = Institution.objects.create(name="FUTO", code="futo")

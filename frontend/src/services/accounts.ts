@@ -4,6 +4,7 @@ import type {
   CourseAssignment,
   CurrentUser,
   Department,
+  Enrolment,
   Faculty,
   ImportJob,
   ImportKind,
@@ -145,6 +146,15 @@ export const updateUser = (id: string, b: Partial<Person>, t: string) =>
 // --- Lecturer assignments ---
 export const listAssignments = (t: string) =>
   listOf<CourseAssignment>(`${ACCOUNTS}/assignments`, t);
+
+// --- Enrolments (course rosters) ---
+export const listEnrolments = (
+  t: string,
+  params: { course?: string; session?: string; semester?: string } = {},
+) => listOf<Enrolment>(withQuery(`${ACCOUNTS}/enrolments`, params), t);
+
+export const getCourse = (id: string, t: string) =>
+  apiRequest<Course>(`${ACCOUNTS}/courses/${id}`, { token: t }).then((r) => r.data as Course);
 export const createAssignment = (b: Partial<CourseAssignment>, t: string) =>
   createOf<CourseAssignment>(`${ACCOUNTS}/assignments`, b, t);
 export const deleteAssignment = (id: string, t: string) =>
