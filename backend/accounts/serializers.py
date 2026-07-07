@@ -322,6 +322,8 @@ class CourseSerializer(serializers.ModelSerializer):
 
 class EnrolmentSerializer(serializers.ModelSerializer):
     institution = serializers.PrimaryKeyRelatedField(read_only=True)
+    student_name = serializers.CharField(source="student.full_name", read_only=True)
+    student_identifier = serializers.CharField(source="student.identifier", read_only=True)
 
     class Meta:
         model = Enrolment
@@ -329,6 +331,8 @@ class EnrolmentSerializer(serializers.ModelSerializer):
             "id",
             "institution",
             "student",
+            "student_name",
+            "student_identifier",
             "course",
             "session",
             "semester",

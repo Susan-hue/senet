@@ -28,6 +28,36 @@ class IsSchoolAdmin(BasePermission):
         )
 
 
+class CanViewCourseAssignments(BasePermission):
+    """Read access for admins, HODs and lecturers (scoped to their own rows in-view)."""
+
+    message = "You cannot view course assignments."
+
+    def has_permission(self, request, view):
+        user = request.user
+        return bool(
+            user
+            and user.is_authenticated
+            and user.institution_id
+            and user.role in (Role.SCHOOL_ADMIN, Role.HOD, Role.LECTURER)
+        )
+
+
+class CanViewEnrolments(BasePermission):
+    """Read access for admins and lecturers (lecturers scoped to assigned courses in-view)."""
+
+    message = "You cannot view enrolments."
+
+    def has_permission(self, request, view):
+        user = request.user
+        return bool(
+            user
+            and user.is_authenticated
+            and user.institution_id
+            and user.role in (Role.SCHOOL_ADMIN, Role.LECTURER)
+        )
+
+
 class CanManageCourseAssignments(BasePermission):
     """A school admin, or an HOD (further scoped to their department in-view)."""
 

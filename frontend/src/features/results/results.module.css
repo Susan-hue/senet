@@ -1,0 +1,208 @@
+.courseGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 16px;
+}
+
+.courseCard {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 20px;
+  text-align: left;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease,
+    transform 0.15s ease;
+}
+
+.courseCard:hover {
+  border-color: var(--border-strong);
+  background: var(--surface-hover);
+  transform: translateY(-1px);
+}
+
+.courseCard:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.courseCode {
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  letter-spacing: 0.08em;
+  color: var(--accent-eyebrow);
+}
+
+.courseTitle {
+  font-size: 1.02rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.35;
+}
+
+.courseFoot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  margin-top: 10px;
+}
+
+.courseCta {
+  font-size: 0.8rem;
+  color: var(--accent-link);
+  white-space: nowrap;
+}
+
+.crumbs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.82rem;
+  color: var(--text-faint);
+  margin-bottom: 10px;
+}
+
+.crumbLink {
+  color: var(--accent-link);
+  text-decoration: none;
+}
+
+.crumbLink:hover {
+  text-decoration: underline;
+}
+
+.reasonBlock {
+  margin-bottom: 16px;
+}
+
+.sheetTable {
+  min-width: 720px;
+}
+
+.scoreInput {
+  width: 84px;
+  padding: 8px 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-family: var(--mono);
+  font-size: 0.88rem;
+  transition:
+    border-color 0.12s ease,
+    box-shadow 0.12s ease;
+}
+
+.scoreInput::placeholder {
+  color: var(--text-faint);
+  font-family: var(--sans);
+  font-size: 0.78rem;
+}
+
+.scoreInput:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.scoreInput:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.scoreInputError {
+  border-color: var(--danger);
+}
+
+.scoreInputError:focus {
+  border-color: var(--danger);
+  box-shadow: 0 0 0 3px var(--danger-soft);
+}
+
+.rowError {
+  display: block;
+  margin-top: 6px;
+  font-size: 0.74rem;
+  color: var(--danger);
+  max-width: 220px;
+}
+
+.dirtyRow td {
+  background: rgba(99, 102, 241, 0.05);
+}
+
+.dirtyRow td:first-child {
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.gradeChip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent-lavender);
+  font-family: var(--mono);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.dirtyNote {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.actionBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 18px;
+  padding: 14px 18px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  position: sticky;
+  bottom: 12px;
+  box-shadow: var(--shadow);
+}
+
+.actionHint {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.actionButtons {
+  display: flex;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+@media (max-width: 640px) {
+  .actionBar {
+    flex-direction: column;
+    align-items: stretch;
+    text-align: center;
+  }
+
+  .actionButtons {
+    justify-content: stretch;
+  }
+
+  .actionButtons > * {
+    flex: 1;
+  }
+}

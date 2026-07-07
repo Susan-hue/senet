@@ -273,3 +273,100 @@ export interface QueuedImport {
 export type ImportOutcome =
   | { kind: "sync"; summary: ImportSummary; message: string; errors: ImportRowError[] | null }
   | { kind: "queued"; jobId: string };
+
+// --------------------------------------------------------------------------- //
+// Results pipeline                                                            //
+// --------------------------------------------------------------------------- //
+
+export type ResultStatus =
+  | "draft"
+  | "submitted_to_hod"
+  | "approved_by_hod"
+  | "approved_by_dean"
+  | "ratified_by_senate"
+  | "returned";
+
+export interface CourseResult {
+  id: string;
+  institution: string;
+  course: string;
+  course_code: string;
+  course_title: string;
+  session: string;
+  semester: string;
+  lecturer: string;
+  lecturer_name: string;
+  status: ResultStatus;
+  returned_reason: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface StudentScore {
+  id: string;
+  student: string;
+  student_name: string;
+  student_identifier: string;
+  ca_score: string;
+  exam_score: string;
+  total: string;
+  grade: string;
+  is_current: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CourseResultDetail extends CourseResult {
+  scores: StudentScore[];
+}
+
+export interface Enrolment {
+  id: string;
+  institution: string;
+  student: string;
+  student_name: string;
+  student_identifier: string;
+  course: string;
+  session: string;
+  semester: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export const RESULT_STATUS_META: Record<
+  ResultStatus,
+  {
+    label: string;
+    tone: "neutral" | "accent" | "violet" | "success" | "warning" | "danger";
+    hint: string;
+  }
+> = {
+  draft: { label: "Draft", tone: "neutral", hint: "Editable — not yet submitted." },
+  submitted_to_hod: {
+    label: "Submitted · awaiting HOD",
+    tone: "accent",
+    hint: "Locked for editing while your HOD reviews it.",
+  },
+  approved_by_hod: {
+    label: "Approved by HOD",
+    tone: "violet",
+    hint: "Locked — moving through faculty approval.",
+  },
+  approved_by_dean: {
+    label: "Approved by Dean",
+    tone: "violet",
+    hint: "Locked — awaiting senate ratification.",
+  },
+  ratified_by_senate: {
+    label: "Ratified by Senate",
+    tone: "success",
+    hint: "Final. Changes now require a formal amendment.",
+  },
+  returned: {
+    label: "Returned",
+    tone: "danger",
+    hint: "Sent back for corrections — edit and resubmit.",
+  },
+};
+
+export const LECTURER_ROLES: Role[] = ["lecturer"];

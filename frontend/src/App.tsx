@@ -3,8 +3,10 @@ import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { AuthProvider } from "./context";
 import { useAuth } from "./hooks";
 import { FullPageLoader } from "./components";
-import { ADMIN_ROLES } from "./types";
+import { ADMIN_ROLES, LECTURER_ROLES } from "./types";
 import type { Role } from "./types";
+import { BookIcon } from "./features/admin/adminIcons";
+import { MyCoursesPage, ScoreSheetPage } from "./features/results";
 import {
   ForgotPasswordPage,
   LoginPage,
@@ -39,6 +41,15 @@ function ProtectedRoute({
   return children;
 }
 
+function RoleHome() {
+  const { user } = useAuth();
+  if (user?.role && ADMIN_ROLES.includes(user.role)) return <Navigate to="/dashboard" replace />;
+  if (user?.role === "lecturer") return <Navigate to="/teach" replace />;
+  return <Navigate to="/403" replace />;
+}
+
+const LECTURER_NAV = [{ to: "/teach", label: "My Courses", Icon: BookIcon }];
+
 function GuestRoute({ children }: { children: ReactElement }) {
   const { status } = useAuth();
   if (status === "loading") return <FullPageLoader />;
@@ -50,13 +61,32 @@ function AppRoutes() {
   return (
     <Routes>
       <Route
+        path="/"
+        element={
+          <ProtectedRoute>
+            <RoleHome />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        element={
+          <ProtectedRoute roles={LECTURER_ROLES}>
+            <AdminLayout nav={LECTURER_NAV} brandSub="Lecturer Workspace" rolePill="Lecturer" />
+          </ProtectedRoute>
+        }
+      >
+        <Route path="/teach" element={<MyCoursesPage />} />
+        <Route path="/teach/sheet" element={<ScoreSheetPage />} />
+      </Route>
+
+      <Route
         element={
           <ProtectedRoute roles={ADMIN_ROLES}>
             <AdminLayout />
           </ProtectedRoute>
         }
       >
-        <Route path="/" element={<Navigate to="/dashboard" replace />} />
         <Route path="/dashboard" element={<DashboardPage />} />
         <Route path="/academic-structure" element={<AcademicStructurePage />} />
         <Route path="/courses" element={<CoursesPage />} />
