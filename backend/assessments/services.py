@@ -4,7 +4,7 @@ from django.db.models import Sum
 from django.utils import timezone
 from rest_framework.exceptions import PermissionDenied, ValidationError
 
-from accounts.models import Enrolment
+from accounts.models import Enrolment, Role
 from accounts.services import lecturer_can_access_course
 from assessments.models import AssessmentGrade, AssessmentItem, Submission
 
@@ -22,6 +22,25 @@ def ca_weight_used(course, session, semester, exclude_pk=None):
 def _require_assigned_lecturer(lecturer, course, session, semester):
     if not lecturer_can_access_course(lecturer, course, session, semester):
         raise PermissionDenied("You are not assigned to this course for the selected term.")
+
+
+def can_read_item_grades(user, item):
+    """Whether ``user`` may read the recorded grades for ``item``.
+
+    The lecturer assigned to the item's course-term, the HOD of its department,
+    the dean of its faculty, and school/senate admins across the tenant. Callers
+    must already have scoped ``item`` to the user's institution.
+    """
+    role = getattr(user, "role", None)
+    if role == Role.LECTURER:
+        return lecturer_can_access_course(user, item.course, item.session, item.semester)
+    if role == Role.HOD:
+        return user.department_id is not None and user.department_id == item.course.department_id
+    if role == Role.DEAN:
+        return user.faculty_id is not None and user.faculty_id == item.course.department.faculty_id
+    if role in (Role.SENATE_ADMIN, Role.SCHOOL_ADMIN):
+        return True
+    return False
 
 
 def create_item(*, lecturer, course, session, semester, title, kind, max_score, weight, due_date):

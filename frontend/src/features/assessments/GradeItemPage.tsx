@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { Alert, Button } from "../../components";
 import {
@@ -12,7 +12,7 @@ import {
 import { useAuth } from "../../hooks";
 import { ApiError } from "../../services/api";
 import { listEnrolments } from "../../services/accounts";
-import { getItem, gradeStudent, listSubmissions } from "../../services/assessments";
+import { getItem, gradeStudent, listGrades, listSubmissions } from "../../services/assessments";
 import { ASSESSMENT_KIND_META } from "../../types";
 import type { AssessmentGrade, AssessmentItem, AssessmentSubmission, Enrolment } from "../../types";
 import { useAsyncData } from "../admin/useAsyncData";
@@ -31,15 +31,16 @@ export function GradeItemPage() {
   const { data, loading, error, reload } = useAsyncData(async () => {
     if (!itemId) return null;
     const item = await getItem(itemId, token);
-    const [roster, submissions] = await Promise.all([
+    const [roster, submissions, grades] = await Promise.all([
       listEnrolments(token, {
         course: item.course,
         session: item.session,
         semester: item.semester,
       }),
       listSubmissions(itemId, token, { page_size: 100 }),
+      listGrades(itemId, token, { page_size: 100 }),
     ]);
-    return { item, roster, submissions: submissions.results };
+    return { item, roster, submissions: submissions.results, grades: grades.results };
   }, [token, itemId]);
 
   const item: AssessmentItem | null = data?.item ?? null;
@@ -52,6 +53,10 @@ export function GradeItemPage() {
 
   const [grades, setGrades] = useState<Map<string, AssessmentGrade>>(new Map());
   const [gradingStudent, setGradingStudent] = useState<Enrolment | null>(null);
+
+  useEffect(() => {
+    setGrades(new Map((data?.grades ?? []).map((g) => [g.student, g])));
+  }, [data]);
 
   if (!itemId) {
     return (

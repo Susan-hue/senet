@@ -24,6 +24,19 @@ class IsStudent(BasePermission):
         )
 
 
+class IsGradeReader(BasePermission):
+    message = "You do not have access to these grades."
+
+    def has_permission(self, request, view):
+        return _is_member(request.user) and request.user.role in (
+            Role.LECTURER,
+            Role.HOD,
+            Role.DEAN,
+            Role.SENATE_ADMIN,
+            Role.SCHOOL_ADMIN,
+        )
+
+
 class IsLecturerOrStudent(BasePermission):
     message = "You do not have access to assessments."
 
