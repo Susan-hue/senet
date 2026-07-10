@@ -320,6 +320,78 @@ class GradingTests(AssessmentsTestBase):
         self.assertEqual(AssessmentGrade.all_objects.filter(item=item).count(), 1)
 
 
+class ItemGradesListingTests(AssessmentsTestBase):
+    def _grade_both(self, item):
+        grade_student(
+            lecturer=self.lecturer,
+            item=item,
+            student=self.student,
+            score=Decimal("15"),
+            feedback="Solid work",
+            is_released=True,
+        )
+        grade_student(
+            lecturer=self.lecturer,
+            item=item,
+            student=self.other_student,
+            score=Decimal("8"),
+        )
+
+    def test_assigned_lecturer_reads_existing_grades(self):
+        item = self.make_item()
+        self._grade_both(item)
+        self.client.force_authenticate(self.lecturer)
+        response = self.client.get(reverse("assessment-item-grades", args=[item.id]))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        rows = {r["student"]: r for r in response.data["data"]["results"]}
+        self.assertEqual(rows[self.student.id]["score"], "15.00")
+        self.assertEqual(rows[self.student.id]["feedback"], "Solid work")
+        self.assertTrue(rows[self.student.id]["is_released"])
+        self.assertEqual(rows[self.other_student.id]["score"], "8.00")
+        self.assertFalse(rows[self.other_student.id]["is_released"])
+
+    def test_hod_in_department_reads_grades(self):
+        item = self.make_item()
+        self._grade_both(item)
+        hod = _member(self.inst, "hod@veritas.edu", Role.HOD, department=self.dept)
+        self.client.force_authenticate(hod)
+        response = self.client.get(reverse("assessment-item-grades", args=[item.id]))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["data"]["count"], 2)
+
+    def test_unassigned_lecturer_denied(self):
+        item = self.make_item()
+        self._grade_both(item)
+        self.client.force_authenticate(self.other_lecturer)
+        response = self.client.get(reverse("assessment-item-grades", args=[item.id]))
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_hod_of_other_department_denied(self):
+        item = self.make_item()
+        other_dept = Department.all_objects.create(
+            institution=self.inst, faculty=self.faculty, name="Physics", code="PHY"
+        )
+        hod = _member(self.inst, "hod2@veritas.edu", Role.HOD, department=other_dept)
+        self.client.force_authenticate(hod)
+        response = self.client.get(reverse("assessment-item-grades", args=[item.id]))
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_student_cannot_read_grades(self):
+        item = self.make_item()
+        self.client.force_authenticate(self.student)
+        response = self.client.get(reverse("assessment-item-grades", args=[item.id]))
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_foreign_lecturer_cannot_read_grades(self):
+        item = self.make_item()
+        self._grade_both(item)
+        foreign = Institution.objects.create(name="FUTO", code="futo")
+        foreign_lecturer = _member(foreign, "lect@futo.edu", Role.LECTURER)
+        self.client.force_authenticate(foreign_lecturer)
+        response = self.client.get(reverse("assessment-item-grades", args=[item.id]))
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+
 class StudentVisibilityTests(AssessmentsTestBase):
     def test_student_sees_own_released_grade_only(self):
         item = self.make_item()

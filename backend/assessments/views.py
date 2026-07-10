@@ -9,7 +9,12 @@ from accounts.responses import error_response, success_response
 from accounts.services import lecturer_can_access_course
 from assessments import services
 from assessments.models import AssessmentGrade, AssessmentItem, Submission
-from assessments.permissions import IsLecturer, IsLecturerOrStudent, IsStudent
+from assessments.permissions import (
+    IsGradeReader,
+    IsLecturer,
+    IsLecturerOrStudent,
+    IsStudent,
+)
 from assessments.serializers import (
     AssessmentItemSerializer,
     CreateItemSerializer,
@@ -54,7 +59,9 @@ def _visible_items(user):
 
 def _get_item(pk, user):
     item = (
-        AssessmentItem.all_objects.select_related("course", "session", "semester")
+        AssessmentItem.all_objects.select_related(
+            "course", "course__department", "session", "semester"
+        )
         .filter(pk=pk, institution_id=user.institution_id)
         .first()
     )
@@ -160,6 +167,25 @@ class GradeView(TenantAPIView):
             lecturer=request.user, item=item, **serializer.validated_data
         )
         return success_response(GradeSerializer(grade).data, "Grade recorded.")
+
+
+class ItemGradesView(TenantAPIView):
+    """Existing grades for an assessment item, for the lecturer marking it (and
+    HODs/deans/admins in scope). Backs the roster on the grading page so already
+    entered scores survive a reload."""
+
+    permission_classes = [IsGradeReader]
+
+    def get(self, request, pk):
+        item = _get_item(pk, request.user)
+        if not services.can_read_item_grades(request.user, item):
+            raise PermissionDenied("You are not permitted to read grades for this course.")
+        qs = (
+            AssessmentGrade.all_objects.filter(item=item)
+            .select_related("item", "student", "submission")
+            .order_by("student__full_name", "id")
+        )
+        return _paginated(request, self, qs, GradeSerializer)
 
 
 class MyGradesView(TenantAPIView):

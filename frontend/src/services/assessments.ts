@@ -72,6 +72,17 @@ export function listSubmissions(
   ).then((r) => r.data ?? (EMPTY_PAGE as Page<AssessmentSubmission>));
 }
 
+export function listGrades(
+  itemId: string,
+  token: string,
+  params: { page?: number; page_size?: number } = {},
+) {
+  return apiRequest<Page<AssessmentGrade>>(
+    withQuery(`${ASSESSMENTS}/items/${itemId}/grades`, params as QueryParams),
+    { token },
+  ).then((r) => r.data ?? (EMPTY_PAGE as Page<AssessmentGrade>));
+}
+
 export interface GradeBody {
   student: string;
   score: string;
