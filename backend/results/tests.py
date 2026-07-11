@@ -5,7 +5,7 @@ import threading
 from decimal import Decimal
 from unittest import mock, skipUnless
 
-from django.db import connection, connections
+from django.db import IntegrityError, connection, connections, transaction
 from django.test import TransactionTestCase
 from django.urls import reverse
 from rest_framework import status
@@ -18,20 +18,25 @@ from accounts.models import (
     Department,
     Enrolment,
     Faculty,
+    Programme,
     Role,
     Semester,
     Session,
     User,
 )
 from results.models import (
+    AmendmentStatus,
     AuditAction,
     CourseResult,
+    ExternalExaminerReport,
     ImmutableRecordError,
+    ResultAmendment,
     ResultAuditLog,
     ResultStatus,
     StudentScore,
 )
 from results.services import (
+    compute_anomaly_stats,
     create_draft_result,
     record_score,
     submit_result,
@@ -608,6 +613,481 @@ class TenantIsolationTests(ResultsTestBase):
         self.assertEqual(scores[0]["grade"], "A")
 
 
+class ApprovalTestBase(ResultsTestBase):
+    def submitted_for(self, course, student=None):
+        student = student or self.student
+        result = create_draft_result(
+            lecturer=self.lecturer, course=course, session=self.session, semester=self.semester
+        )
+        record_score(
+            actor=self.lecturer,
+            result_id=result.id,
+            student=student,
+            ca_score=Decimal("30"),
+            exam_score=Decimal("50"),
+        )
+        return submit_result(actor=self.lecturer, result_id=result.id)
+
+    def advance_to(self, result, target):
+        """Push a submitted result up the chain until it reaches ``target``."""
+        chain = [
+            (self.hod, ResultStatus.APPROVED_BY_HOD),
+            (self.dean, ResultStatus.APPROVED_BY_DEAN),
+            (self.senate, ResultStatus.RATIFIED_BY_SENATE),
+        ]
+        for actor, to_status in chain:
+            if result.status == target:
+                break
+            transition_result(actor=actor, result_id=result.id, to_status=to_status)
+            result = CourseResult.all_objects.get(pk=result.id)
+        return result
+
+    def enrol(self, email, course=None):
+        course = course or self.course
+        student = _member(self.inst, email, Role.STUDENT, department=self.dept)
+        Enrolment.all_objects.create(
+            institution=self.inst,
+            student=student,
+            course=course,
+            session=self.session,
+            semester=self.semester,
+        )
+        return student
+
+    def second_course(self, code="CSC 102"):
+        course = Course.all_objects.create(
+            institution=self.inst,
+            department=self.dept,
+            code=code,
+            title="Data Structures",
+            credit_units=3,
+        )
+        CourseAssignment.all_objects.create(
+            institution=self.inst,
+            lecturer=self.lecturer,
+            course=course,
+            session=self.session,
+            semester=self.semester,
+        )
+        return course
+
+
+class ApprovalWorklistTests(ApprovalTestBase):
+    def test_hod_worklist_is_department_scoped(self):
+        self.make_submitted()
+        self.client.force_authenticate(self.hod)
+        self.assertEqual(self.client.get(reverse("result-worklist")).data["data"]["count"], 1)
+        self.client.force_authenticate(self.wrong_hod)
+        self.assertEqual(self.client.get(reverse("result-worklist")).data["data"]["count"], 0)
+
+    def test_dean_worklist_shows_hod_approved_in_faculty_only(self):
+        result = self.make_submitted()
+        self.advance_to(result, ResultStatus.APPROVED_BY_HOD)
+        self.client.force_authenticate(self.dean)
+        self.assertEqual(self.client.get(reverse("result-worklist")).data["data"]["count"], 1)
+        # It has left the HOD's queue.
+        self.client.force_authenticate(self.hod)
+        self.assertEqual(self.client.get(reverse("result-worklist")).data["data"]["count"], 0)
+        # A dean in another faculty does not see it.
+        self.client.force_authenticate(self.wrong_dean)
+        self.assertEqual(self.client.get(reverse("result-worklist")).data["data"]["count"], 0)
+
+    def test_senate_worklist_shows_dean_approved_institution_wide(self):
+        result = self.make_submitted()
+        self.advance_to(result, ResultStatus.APPROVED_BY_DEAN)
+        self.client.force_authenticate(self.senate)
+        self.assertEqual(self.client.get(reverse("result-worklist")).data["data"]["count"], 1)
+
+
+class ApprovalActionApiTests(ApprovalTestBase):
+    def test_hod_approves_via_api(self):
+        result = self.make_submitted()
+        self.client.force_authenticate(self.hod)
+        response = self.client.post(reverse("result-approve", args=[result.id]))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["data"]["status"], ResultStatus.APPROVED_BY_HOD)
+
+    def test_hod_of_another_department_denied_via_api(self):
+        result = self.make_submitted()
+        self.client.force_authenticate(self.wrong_hod)
+        response = self.client.post(reverse("result-approve", args=[result.id]))
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(
+            CourseResult.all_objects.get(pk=result.id).status, ResultStatus.SUBMITTED_TO_HOD
+        )
+
+    def test_dean_approves_via_api(self):
+        result = self.make_submitted()
+        self.advance_to(result, ResultStatus.APPROVED_BY_HOD)
+        self.client.force_authenticate(self.dean)
+        response = self.client.post(reverse("result-approve", args=[result.id]))
+        self.assertEqual(response.data["data"]["status"], ResultStatus.APPROVED_BY_DEAN)
+
+    def test_dean_of_another_faculty_denied_via_api(self):
+        result = self.make_submitted()
+        self.advance_to(result, ResultStatus.APPROVED_BY_HOD)
+        self.client.force_authenticate(self.wrong_dean)
+        response = self.client.post(reverse("result-approve", args=[result.id]))
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_return_requires_reason(self):
+        result = self.make_submitted()
+        self.client.force_authenticate(self.hod)
+        response = self.client.post(reverse("result-return", args=[result.id]), {}, format="json")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        response = self.client.post(
+            reverse("result-return", args=[result.id]),
+            {"reason": "CA column looks wrong."},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["data"]["status"], ResultStatus.RETURNED)
+        self.assertEqual(response.data["data"]["returned_reason"], "CA column looks wrong.")
+
+
+class BatchRatifyTests(ApprovalTestBase):
+    def _two_dean_approved(self):
+        course2 = self.second_course()
+        Enrolment.all_objects.create(
+            institution=self.inst,
+            student=self.student,
+            course=course2,
+            session=self.session,
+            semester=self.semester,
+        )
+        r1 = self.advance_to(self.make_submitted(), ResultStatus.APPROVED_BY_DEAN)
+        r2 = self.advance_to(self.submitted_for(course2), ResultStatus.APPROVED_BY_DEAN)
+        return r1, r2
+
+    def test_senate_batch_ratifies_and_audits_each(self):
+        r1, r2 = self._two_dean_approved()
+        self.client.force_authenticate(self.senate)
+        response = self.client.post(
+            reverse("result-batch-ratify"),
+            {"result_ids": [str(r1.id), str(r2.id)]},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data["data"]), 2)
+        for result in (r1, r2):
+            self.assertEqual(
+                CourseResult.all_objects.get(pk=result.id).status,
+                ResultStatus.RATIFIED_BY_SENATE,
+            )
+            self.assertEqual(
+                ResultAuditLog.all_objects.filter(
+                    result_id=result.id,
+                    action=AuditAction.STATUS_CHANGED,
+                    after={"status": ResultStatus.RATIFIED_BY_SENATE.value},
+                ).count(),
+                1,
+            )
+
+    def test_batch_is_all_or_nothing(self):
+        r1, _r2 = self._two_dean_approved()
+        course3 = self.second_course("CSC 103")
+        Enrolment.all_objects.create(
+            institution=self.inst,
+            student=self.student,
+            course=course3,
+            session=self.session,
+            semester=self.semester,
+        )
+        not_ready = self.advance_to(self.submitted_for(course3), ResultStatus.APPROVED_BY_HOD)
+        self.client.force_authenticate(self.senate)
+        response = self.client.post(
+            reverse("result-batch-ratify"),
+            {"result_ids": [str(r1.id), str(not_ready.id)]},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        # The whole batch rolled back: the ratifiable sheet is untouched.
+        self.assertEqual(
+            CourseResult.all_objects.get(pk=r1.id).status, ResultStatus.APPROVED_BY_DEAN
+        )
+
+    def test_non_senate_cannot_batch_ratify(self):
+        r1, r2 = self._two_dean_approved()
+        self.client.force_authenticate(self.dean)
+        response = self.client.post(
+            reverse("result-batch-ratify"),
+            {"result_ids": [str(r1.id), str(r2.id)]},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+
+class AnomalyStatsTests(ApprovalTestBase):
+    def _score(self, result, student, ca, exam):
+        record_score(
+            actor=self.lecturer,
+            result_id=result.id,
+            student=student,
+            ca_score=Decimal(ca),
+            exam_score=Decimal(exam),
+        )
+
+    def test_high_failure_rate_flagged(self):
+        result = self.make_draft()
+        self._score(result, self.student, "35", "40")  # 75 -> A
+        self._score(result, self.enrol("f1@veritas.edu"), "10", "20")  # 30 -> F
+        self._score(result, self.enrol("f2@veritas.edu"), "10", "15")  # 25 -> F
+        self._score(result, self.enrol("f3@veritas.edu"), "10", "10")  # 20 -> F
+        stats = compute_anomaly_stats(result)
+        self.assertEqual(stats["total_students"], 4)
+        self.assertEqual(stats["failure_count"], 3)
+        self.assertEqual(stats["failure_rate"], "0.75")
+        self.assertEqual(stats["class_average"], "37.50")
+        self.assertEqual(stats["highest_score"], "75.00")
+        self.assertEqual(stats["lowest_score"], "20.00")
+        self.assertEqual(stats["grade_distribution"]["A"], 1)
+        self.assertEqual(stats["grade_distribution"]["F"], 3)
+        self.assertTrue(stats["flags"]["high_failure_rate"])
+        self.assertFalse(stats["flags"]["abnormally_high_grades"])
+
+    def test_abnormally_high_grades_flagged(self):
+        course2 = self.second_course()
+        result = create_draft_result(
+            lecturer=self.lecturer, course=course2, session=self.session, semester=self.semester
+        )
+        Enrolment.all_objects.create(
+            institution=self.inst,
+            student=self.student,
+            course=course2,
+            session=self.session,
+            semester=self.semester,
+        )
+        self._score(result, self.student, "35", "40")  # A
+        self._score(result, self.enrol("a1@veritas.edu", course2), "35", "40")  # A
+        self._score(result, self.enrol("a2@veritas.edu", course2), "35", "40")  # A
+        self._score(result, self.enrol("b1@veritas.edu", course2), "30", "35")  # 65 -> B
+        stats = compute_anomaly_stats(result)
+        self.assertEqual(stats["grade_distribution"]["A"], 3)
+        self.assertEqual(stats["grade_distribution"]["B"], 1)
+        self.assertEqual(stats["failure_count"], 0)
+        self.assertTrue(stats["flags"]["abnormally_high_grades"])
+        self.assertFalse(stats["flags"]["high_failure_rate"])
+
+    def test_empty_sheet_is_safe(self):
+        stats = compute_anomaly_stats(self.make_draft())
+        self.assertEqual(stats["total_students"], 0)
+        self.assertIsNone(stats["class_average"])
+        self.assertEqual(stats["failure_rate"], "0.00")
+
+    def test_statistics_included_in_detail_for_board(self):
+        result = self.make_submitted()
+        self.client.force_authenticate(self.hod)
+        response = self.client.get(reverse("result-detail", args=[result.id]))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        stats = response.data["data"]["statistics"]
+        self.assertEqual(stats["total_students"], 1)
+        self.assertIn("grade_distribution", stats)
+        self.assertIn("high_failure_rate", stats["flags"])
+
+
+class ExternalExaminerTests(ApprovalTestBase):
+    def setUp(self):
+        super().setUp()
+        self.programme = Programme.all_objects.create(
+            institution=self.inst,
+            department=self.dept,
+            name="Computer Science",
+            code="CSC-BSC",
+            degree_type="B.Sc",
+        )
+
+    def _payload(self):
+        return {
+            "programme": str(self.programme.id),
+            "session": str(self.session.id),
+            "semester": str(self.semester.id),
+            "examiner_name": "Prof. Ada Okoro",
+            "examiner_institution": "University of Lagos",
+            "audit_date": "2026-06-15",
+            "remarks": "Scripts marked to standard.",
+        }
+
+    def test_dean_captures_report(self):
+        self.client.force_authenticate(self.dean)
+        response = self.client.post(
+            reverse("external-examiner-reports"), self._payload(), format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["data"]["faculty"], self.faculty.id)
+        self.assertEqual(response.data["data"]["examiner_name"], "Prof. Ada Okoro")
+
+    def test_non_dean_cannot_capture(self):
+        self.client.force_authenticate(self.hod)
+        response = self.client.post(
+            reverse("external-examiner-reports"), self._payload(), format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_dean_of_other_faculty_denied(self):
+        self.client.force_authenticate(self.wrong_dean)
+        response = self.client.post(
+            reverse("external-examiner-reports"), self._payload(), format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(ExternalExaminerReport.all_objects.count(), 0)
+
+    def test_list_is_faculty_scoped(self):
+        self.client.force_authenticate(self.dean)
+        self.client.post(reverse("external-examiner-reports"), self._payload(), format="json")
+        self.assertEqual(
+            self.client.get(reverse("external-examiner-reports")).data["data"]["count"], 1
+        )
+        self.client.force_authenticate(self.wrong_dean)
+        self.assertEqual(
+            self.client.get(reverse("external-examiner-reports")).data["data"]["count"], 0
+        )
+
+    def test_reports_are_tenant_isolated(self):
+        self.client.force_authenticate(self.dean)
+        self.client.post(reverse("external-examiner-reports"), self._payload(), format="json")
+
+        foreign = Institution.objects.create(name="FUTO", code="futo")
+        foreign_faculty = Faculty.all_objects.create(
+            institution=foreign, name="Science", code="SCI"
+        )
+        foreign_dean = _member(foreign, "dean@futo.edu", Role.DEAN, faculty=foreign_faculty)
+        self.client.force_authenticate(foreign_dean)
+        # Sees none of our reports.
+        self.assertEqual(
+            self.client.get(reverse("external-examiner-reports")).data["data"]["count"], 0
+        )
+        # Cannot capture a report against our programme (not in their tenant).
+        response = self.client.post(
+            reverse("external-examiner-reports"), self._payload(), format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+
+class AmendmentWorkflowTests(ApprovalTestBase):
+    def ratified(self):
+        return self.advance_to(self.make_submitted(), ResultStatus.RATIFIED_BY_SENATE)
+
+    def raise_amendment_api(self, result, actor=None, **overrides):
+        self.client.force_authenticate(actor or self.lecturer)
+        payload = {
+            "student": str(self.student.id),
+            "proposed_ca_score": "35",
+            "proposed_exam_score": "55",
+            "justification": "Exam script re-marked; addition error corrected.",
+        }
+        payload.update(overrides)
+        return self.client.post(
+            reverse("result-raise-amendment", args=[result.id]), payload, format="json"
+        )
+
+    def test_amendment_supersedes_without_destroying_original(self):
+        result = self.ratified()
+        original = StudentScore.all_objects.get(result=result, student=self.student)
+        self.assertEqual(original.total, Decimal("80"))
+
+        response = self.raise_amendment_api(result)
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        amendment_id = response.data["data"]["id"]
+
+        self.client.force_authenticate(self.hod)
+        self.client.post(reverse("amendment-approve", args=[amendment_id]))
+        self.client.force_authenticate(self.dean)
+        self.client.post(reverse("amendment-approve", args=[amendment_id]))
+        self.client.force_authenticate(self.senate)
+        final = self.client.post(reverse("amendment-approve", args=[amendment_id]))
+        self.assertEqual(final.data["data"]["status"], AmendmentStatus.APPLIED)
+
+        # Original row survives untouched, only losing currency.
+        original.refresh_from_db()
+        self.assertFalse(original.is_current)
+        self.assertEqual(original.total, Decimal("80"))
+
+        current = StudentScore.all_objects.get(result=result, student=self.student, is_current=True)
+        self.assertEqual(current.total, Decimal("90"))
+        self.assertEqual(current.grade, "A")
+        self.assertEqual(current.supersedes_id, original.id)
+        self.assertEqual(
+            StudentScore.all_objects.filter(
+                result=result, student=self.student, is_current=True
+            ).count(),
+            1,
+        )
+
+    def test_amended_result_detail_shows_superseding_row_only(self):
+        result = self.ratified()
+        response = self.raise_amendment_api(result)
+        amendment_id = response.data["data"]["id"]
+        self.client.force_authenticate(self.hod)
+        self.client.post(reverse("amendment-approve", args=[amendment_id]))
+        self.client.force_authenticate(self.dean)
+        self.client.post(reverse("amendment-approve", args=[amendment_id]))
+        self.client.force_authenticate(self.senate)
+        self.client.post(reverse("amendment-approve", args=[amendment_id]))
+
+        self.client.force_authenticate(self.hod)
+        detail = self.client.get(reverse("result-detail", args=[result.id]))
+        scores = detail.data["data"]["scores"]
+        self.assertEqual(len(scores), 1)
+        self.assertEqual(scores[0]["total"], "90.00")
+
+    def test_justification_is_mandatory(self):
+        result = self.ratified()
+        response = self.raise_amendment_api(result, justification="")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_only_ratified_results_can_be_amended(self):
+        result = self.make_submitted()
+        response = self.raise_amendment_api(result)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_unauthorized_actor_cannot_raise(self):
+        result = self.ratified()
+        response = self.raise_amendment_api(result, actor=self.unassigned_lecturer)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_wrong_department_hod_cannot_approve_amendment(self):
+        result = self.ratified()
+        amendment_id = self.raise_amendment_api(result).data["data"]["id"]
+        self.client.force_authenticate(self.wrong_hod)
+        response = self.client.post(reverse("amendment-approve", args=[amendment_id]))
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_amendment_return_requires_reason(self):
+        result = self.ratified()
+        amendment_id = self.raise_amendment_api(result).data["data"]["id"]
+        self.client.force_authenticate(self.hod)
+        response = self.client.post(
+            reverse("amendment-return", args=[amendment_id]), {}, format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        response = self.client.post(
+            reverse("amendment-return", args=[amendment_id]),
+            {"reason": "Provide the re-marked script."},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["data"]["status"], AmendmentStatus.RETURNED)
+
+    def test_foreign_actor_cannot_view_or_act_on_amendment(self):
+        result = self.ratified()
+        amendment_id = self.raise_amendment_api(result).data["data"]["id"]
+
+        foreign = Institution.objects.create(name="FUTO", code="futo")
+        foreign_senate = _member(foreign, "senate@futo.edu", Role.SENATE_ADMIN)
+        self.client.force_authenticate(foreign_senate)
+        self.assertEqual(
+            self.client.get(reverse("amendment-detail", args=[amendment_id])).status_code,
+            status.HTTP_404_NOT_FOUND,
+        )
+        self.assertEqual(
+            self.client.post(reverse("amendment-approve", args=[amendment_id])).status_code,
+            status.HTTP_404_NOT_FOUND,
+        )
+        self.assertFalse(
+            ResultAmendment.all_objects.get(pk=amendment_id).status == AmendmentStatus.APPLIED
+        )
+
+
 @skipUnless(
     connection.vendor == "postgresql",
     "select_for_update is a no-op on SQLite; real row locks need Postgres",
@@ -658,3 +1138,89 @@ class ConcurrentTransitionTests(ResultsDataMixin, TransactionTestCase):
             ).count(),
             1,
         )
+
+
+@skipUnless(
+    connection.vendor == "postgresql",
+    "Immutability triggers are PostgreSQL DDL; they do not exist on SQLite.",
+)
+class DatabaseTriggerImmutabilityTests(ResultsTestBase):
+    """The ORM save()/delete() guards stop model-level writes, but a bulk
+    ``QuerySet.update()`` or raw SQL bypasses ``save()`` entirely. These tests
+    prove the database triggers (migration 0004) hold the line where the Python
+    guards cannot reach."""
+
+    def ratify(self):
+        result = self.make_submitted()
+        transition_result(
+            actor=self.hod, result_id=result.id, to_status=ResultStatus.APPROVED_BY_HOD
+        )
+        transition_result(
+            actor=self.dean, result_id=result.id, to_status=ResultStatus.APPROVED_BY_DEAN
+        )
+        return transition_result(
+            actor=self.senate, result_id=result.id, to_status=ResultStatus.RATIFIED_BY_SENATE
+        )
+
+    def test_trigger_blocks_bulk_update_bypassing_model_save(self):
+        result = self.ratify()
+        row = StudentScore.all_objects.get(result=result, is_current=True)
+        # QuerySet.update() emits SQL directly, never calling StudentScore.save(),
+        # so only the DB trigger can stop it.
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                StudentScore.all_objects.filter(pk=row.pk).update(total=Decimal("1"))
+        row.refresh_from_db()
+        self.assertEqual(row.total, Decimal("80"))
+
+    def test_trigger_blocks_raw_sql_update_on_ratified_score(self):
+        result = self.ratify()
+        row = StudentScore.all_objects.get(result=result, is_current=True)
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        "UPDATE results_student_score SET total = 1, grade = 'F' WHERE id = %s",
+                        [row.pk],
+                    )
+        row.refresh_from_db()
+        self.assertEqual(row.total, Decimal("80"))
+        self.assertEqual(row.grade, "A")
+
+    def test_trigger_blocks_raw_delete_on_ratified_score(self):
+        result = self.ratify()
+        row = StudentScore.all_objects.get(result=result, is_current=True)
+        # Raw SQL DELETE bypasses both StudentScore.delete() and the ORM's
+        # cascade collection, isolating the row-level DELETE trigger.
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                with connection.cursor() as cursor:
+                    cursor.execute("DELETE FROM results_student_score WHERE id = %s", [row.pk])
+        self.assertTrue(StudentScore.all_objects.filter(pk=row.pk).exists())
+
+    def test_trigger_still_allows_currency_flip_via_bulk_update(self):
+        # The amendment supersession path retires a row with a bulk currency
+        # flip; the trigger must let value-preserving updates through.
+        result = self.ratify()
+        row = StudentScore.all_objects.get(result=result, is_current=True)
+        StudentScore.all_objects.filter(pk=row.pk).update(is_current=False)
+        row.refresh_from_db()
+        self.assertFalse(row.is_current)
+        self.assertEqual(row.total, Decimal("80"))
+
+    def test_trigger_blocks_bulk_update_on_audit_log(self):
+        result = self.make_draft()
+        entry = ResultAuditLog.all_objects.filter(result=result).first()
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                ResultAuditLog.all_objects.filter(pk=entry.pk).update(reason="tampered")
+        entry.refresh_from_db()
+        self.assertNotEqual(entry.reason, "tampered")
+
+    def test_trigger_blocks_delete_on_audit_log(self):
+        result = self.make_draft()
+        entry = ResultAuditLog.all_objects.filter(result=result).first()
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                ResultAuditLog.all_objects.filter(pk=entry.pk).delete()
+        self.assertTrue(ResultAuditLog.all_objects.filter(pk=entry.pk).exists())

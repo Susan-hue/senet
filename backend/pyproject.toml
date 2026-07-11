@@ -16,6 +16,10 @@ quote-style = "double"
 indent-style = "space"
 line-ending = "auto"
 
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "config.settings"
+python_files = ["tests.py", "test_*.py", "*_test.py"]
+
 [tool.bandit]
 exclude_dirs = ["migrations", ".venv", "venv", "*/tests.py", "*/test_*.py", "*_test.py"]
 
