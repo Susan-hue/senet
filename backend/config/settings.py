@@ -1,3 +1,4 @@
+import os
 import ssl
 import sys
 from datetime import timedelta
@@ -70,7 +71,15 @@ TEMPLATES = [
     }
 ]
 
-TESTING = "test" in sys.argv
+# A test run must never touch the production database. Detect both runners:
+# `manage.py test` puts "test" in argv, while pytest sets PYTEST_VERSION in the
+# environment (and is imported into sys.modules) before settings are read.
+TESTING = (
+    "test" in sys.argv
+    or "PYTEST_VERSION" in os.environ
+    or "pytest" in sys.modules
+    or os.path.basename(sys.argv[0]) in ("pytest", "py.test")
+)
 
 _SQLITE_DEFAULT = {
     "ENGINE": "django.db.backends.sqlite3",
@@ -81,6 +90,11 @@ DATABASE_URL = config("DATABASE_URL", default="")
 DATABASE_URL_TEST = config("DATABASE_URL_TEST", default="")
 
 if TESTING:
+    # Defense in depth: refuse to run the suite against the production DB even
+    # if someone points DATABASE_URL_TEST at it. Without an explicit test URL we
+    # fall back to a throwaway SQLite file, never the production DATABASE_URL.
+    if DATABASE_URL and DATABASE_URL_TEST == DATABASE_URL:
+        raise ValueError("DATABASE_URL_TEST must not equal the production DATABASE_URL")
     if DATABASE_URL_TEST:
         DATABASES = {"default": dj_database_url.parse(DATABASE_URL_TEST, conn_max_age=0)}
     else:

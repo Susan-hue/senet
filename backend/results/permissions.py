@@ -27,3 +27,24 @@ class IsLecturer(BasePermission):
 
     def has_permission(self, request, view):
         return _is_member(request.user) and request.user.role == Role.LECTURER
+
+
+class IsHOD(BasePermission):
+    message = "Only a Head of Department can perform this action."
+
+    def has_permission(self, request, view):
+        return _is_member(request.user) and request.user.role == Role.HOD
+
+
+class IsDean(BasePermission):
+    message = "Only a Dean can perform this action."
+
+    def has_permission(self, request, view):
+        return _is_member(request.user) and request.user.role == Role.DEAN
+
+
+class IsSenateAdmin(BasePermission):
+    message = "Only a Senate Administrator can perform this action."
+
+    def has_permission(self, request, view):
+        return _is_member(request.user) and request.user.role == Role.SENATE_ADMIN

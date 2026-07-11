@@ -130,12 +130,98 @@ class StudentScore(AcademicBase):
         return super().delete(*args, **kwargs)
 
 
+class ExternalExaminerReport(AcademicBase):
+    """NUC-required record that an external examiner audited a programme's
+    questions/scripts for a session + semester. Captured at the faculty (Dean)
+    level; tenant-scoped and tied to the faculty/programme + term."""
+
+    faculty = models.ForeignKey(
+        "accounts.Faculty", on_delete=models.PROTECT, related_name="external_examiner_reports"
+    )
+    programme = models.ForeignKey(
+        "accounts.Programme", on_delete=models.PROTECT, related_name="external_examiner_reports"
+    )
+    session = models.ForeignKey(
+        "accounts.Session", on_delete=models.PROTECT, related_name="external_examiner_reports"
+    )
+    semester = models.ForeignKey(
+        "accounts.Semester", on_delete=models.PROTECT, related_name="external_examiner_reports"
+    )
+    examiner_name = models.CharField(max_length=200)
+    examiner_institution = models.CharField(max_length=200)
+    audit_date = models.DateField()
+    remarks = models.TextField(blank=True, default="")
+    created_by = models.ForeignKey(User, on_delete=models.PROTECT, related_name="+")
+
+    class Meta:
+        db_table = "results_external_examiner_report"
+        ordering = ["-audit_date", "-created_at"]
+
+    def __str__(self):
+        return f"{self.examiner_name} — {self.programme_id} ({self.session_id})"
+
+
+class AmendmentStatus(models.TextChoices):
+    PENDING_HOD = "pending_hod", "Pending HOD"
+    APPROVED_BY_HOD = "approved_by_hod", "Approved by HOD"
+    APPROVED_BY_DEAN = "approved_by_dean", "Approved by Dean"
+    APPLIED = "applied", "Applied"
+    RETURNED = "returned", "Returned"
+
+
+class ResultAmendment(AcademicBase):
+    """A proposed correction to a single student's score on a *ratified* result
+    sheet. It carries its own approval chain (HOD -> Dean -> Senate) and, once
+    ratified, supersedes the original score row via the ``is_current`` flip. The
+    original row is never overwritten or deleted."""
+
+    result = models.ForeignKey(CourseResult, on_delete=models.PROTECT, related_name="amendments")
+    student = models.ForeignKey(
+        User,
+        on_delete=models.PROTECT,
+        related_name="result_amendments",
+        limit_choices_to={"role": Role.STUDENT},
+    )
+    # The current score row the amendment corrects, snapshotted at raise time.
+    original_score = models.ForeignKey(
+        StudentScore, on_delete=models.PROTECT, related_name="amendments"
+    )
+    proposed_ca_score = models.DecimalField(max_digits=5, decimal_places=2)
+    proposed_exam_score = models.DecimalField(max_digits=5, decimal_places=2)
+    proposed_total = models.DecimalField(max_digits=5, decimal_places=2)
+    proposed_grade = models.CharField(max_length=2)
+    justification = models.TextField()
+    status = models.CharField(
+        max_length=20, choices=AmendmentStatus.choices, default=AmendmentStatus.PENDING_HOD
+    )
+    returned_reason = models.TextField(blank=True, default="")
+    raised_by = models.ForeignKey(User, on_delete=models.PROTECT, related_name="+")
+    # The new superseding score row, set when the amendment is applied.
+    applied_score = models.OneToOneField(
+        StudentScore,
+        on_delete=models.PROTECT,
+        related_name="applied_amendment",
+        null=True,
+        blank=True,
+    )
+
+    class Meta:
+        db_table = "results_amendment"
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"Amendment on {self.result_id} for {self.student_id} ({self.status})"
+
+
 class AuditAction(models.TextChoices):
     RESULT_CREATED = "result_created", "Result created"
     SCORE_ADDED = "score_added", "Score added"
     SCORE_CHANGED = "score_changed", "Score changed"
     SCORE_SUPERSEDED = "score_superseded", "Score superseded"
     STATUS_CHANGED = "status_changed", "Status changed"
+    # Amendment chain transitions get their own action so the audit trail is
+    # readable from the action column alone, without inspecting the JSON payload.
+    AMENDMENT_STATUS_CHANGED = "amendment_status_changed", "Amendment status changed"
 
 
 class ResultAuditLog(AcademicBase):
@@ -150,7 +236,7 @@ class ResultAuditLog(AcademicBase):
         blank=True,
     )
     actor = models.ForeignKey(User, on_delete=models.PROTECT, related_name="+")
-    action = models.CharField(max_length=20, choices=AuditAction.choices)
+    action = models.CharField(max_length=32, choices=AuditAction.choices)
     before = models.JSONField(null=True, blank=True)
     after = models.JSONField(null=True, blank=True)
     reason = models.TextField(blank=True, default="")
