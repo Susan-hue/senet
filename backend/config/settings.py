@@ -182,6 +182,10 @@ if CELERY_RESULT_BACKEND.startswith("rediss://"):
 # auto-submits them. Short by design — the finalizer is idempotent and row-locked,
 # so frequent, overlapping runs are safe.
 CBT_FINALIZE_INTERVAL_SECONDS = config("CBT_FINALIZE_INTERVAL_SECONDS", default=60, cast=int)
+
+# Proctoring webcam media limits. Snapshots are small images; short clips a few MB.
+CBT_WEBCAM_MAX_FILE_BYTES = config("CBT_WEBCAM_MAX_FILE_BYTES", default=8 * 1024 * 1024, cast=int)
+CBT_WEBCAM_ALLOWED_EXTENSIONS = (".jpg", ".jpeg", ".png", ".webp", ".webm", ".mp4")
 CELERY_BEAT_SCHEDULE = {
     "cbt-finalize-expired-attempts": {
         "task": "cbt.tasks.finalize_expired_attempts_task",

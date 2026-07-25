@@ -1,5 +1,6 @@
 from decimal import Decimal
 
+from django.conf import settings
 from django.utils import timezone
 from rest_framework import serializers
 
@@ -7,11 +8,15 @@ from accounts.models import Course, Semester, Session
 from cbt.models import (
     Answer,
     AttemptStatus,
+    CheatingFlag,
     Exam,
     ExamAttempt,
+    ProctorEvent,
+    ProctorEventType,
     Question,
     QuestionBank,
     QuestionType,
+    WebcamCapture,
 )
 from tenancy.scoping import get_current_institution
 
@@ -246,3 +251,97 @@ class SaveAnswersBatchSerializer(serializers.Serializer):
     """A buffered set of answers synced in one request on reconnect."""
 
     answers = SaveAnswerSerializer(many=True, allow_empty=False)
+
+
+# --------------------------------------------------------------------------- #
+# Proctoring                                                                  #
+# --------------------------------------------------------------------------- #
+
+
+class RecordEventSerializer(serializers.Serializer):
+    type = serializers.ChoiceField(choices=ProctorEventType.choices)
+    client_timestamp = serializers.DateTimeField()
+    detail = serializers.JSONField(required=False, allow_null=True, default=None)
+
+
+class ProctorEventSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ProctorEvent
+        fields = ["id", "attempt", "type", "client_timestamp", "detail", "created_at"]
+        read_only_fields = fields
+
+
+class WebcamUploadSerializer(serializers.Serializer):
+    media = serializers.FileField()
+    kind = serializers.ChoiceField(
+        choices=WebcamCapture.Kind.choices, default=WebcamCapture.Kind.SNAPSHOT
+    )
+    captured_at = serializers.DateTimeField()
+    is_anomalous = serializers.BooleanField(required=False, default=False)
+    anomaly_reason = serializers.CharField(
+        required=False, allow_blank=True, default="", max_length=200
+    )
+
+    def validate_media(self, upload):
+        name = (upload.name or "").lower()
+        if not name.endswith(settings.CBT_WEBCAM_ALLOWED_EXTENSIONS):
+            allowed = ", ".join(settings.CBT_WEBCAM_ALLOWED_EXTENSIONS)
+            raise serializers.ValidationError(f"Only {allowed} files are accepted.")
+        if upload.size > settings.CBT_WEBCAM_MAX_FILE_BYTES:
+            limit_mb = settings.CBT_WEBCAM_MAX_FILE_BYTES // (1024 * 1024)
+            raise serializers.ValidationError(f"File exceeds the maximum size of {limit_mb} MB.")
+        return upload
+
+
+class WebcamCaptureSerializer(serializers.ModelSerializer):
+    media_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = WebcamCapture
+        fields = [
+            "id",
+            "attempt",
+            "kind",
+            "media_url",
+            "original_filename",
+            "captured_at",
+            "expires_at",
+            "is_anomalous",
+            "anomaly_reason",
+            "created_at",
+        ]
+        read_only_fields = fields
+
+    def get_media_url(self, capture):
+        try:
+            return capture.media.url
+        except (ValueError, NotImplementedError):
+            return None
+
+
+class CheatingFlagSerializer(serializers.ModelSerializer):
+    student_name = serializers.CharField(source="attempt.student.full_name", read_only=True)
+    exam_title = serializers.CharField(source="attempt.exam.title", read_only=True)
+
+    class Meta:
+        model = CheatingFlag
+        fields = [
+            "id",
+            "attempt",
+            "student_name",
+            "exam_title",
+            "status",
+            "auto_raised",
+            "reasons",
+            "reviewed_by",
+            "reviewed_at",
+            "review_notes",
+            "escalated_to",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = fields
+
+
+class ReviewFlagSerializer(serializers.Serializer):
+    notes = serializers.CharField(required=False, allow_blank=True, default="")

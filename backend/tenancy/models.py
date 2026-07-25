@@ -95,6 +95,9 @@ class Institution(TimeStampedUUIDModel):
 
     lecturer_ranks = models.JSONField(default=default_lecturer_ranks, blank=True)
 
+    # How long CBT webcam media is retained before the cleanup task purges it.
+    webcam_retention_days = models.PositiveIntegerField(default=90)
+
     enforce_fees_for_results = models.BooleanField(default=False)
     has_external_affiliation = models.BooleanField(default=False)
     has_teaching_practice = models.BooleanField(default=False)

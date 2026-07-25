@@ -13,6 +13,8 @@ Design notes that matter for exam integrity:
   set by the server at start and are the only clock that counts.
 """
 
+import uuid
+
 from django.db import models
 
 from accounts.models import AcademicBase, Role, User
@@ -88,8 +90,7 @@ class Question(AcademicBase):
     options = models.JSONField(default=list, blank=True)
     correct_answer = models.JSONField(null=True, blank=True)
     marks = models.DecimalField(max_digits=6, decimal_places=2, default=1)
-    # Objective questions are graded on submit; this is forced True for short
-    # answers and forced False for the objective types at creation time.
+
     requires_manual_grading = models.BooleanField(default=False)
     difficulty = models.CharField(max_length=8, choices=Difficulty.choices, blank=True, default="")
     topic = models.CharField(max_length=120, blank=True, default="")
@@ -248,3 +249,134 @@ class Answer(AcademicBase):
 
     def __str__(self):
         return f"{self.attempt_id} · {self.question_id}"
+
+
+# Proctoring. Honest scope: browser lockdown signals + webcam are a deterrent and
+# an evidence trail for human review, not a tamper-proof control. Every signal is
+# advisory — a flag never changes a score or an attempt on its own.
+
+
+class AppendOnlyError(Exception):
+    pass
+
+
+class ProctorEventType(models.TextChoices):
+    TAB_SWITCH = "tab_switch", "Tab switch"
+    FOCUS_LOSS = "focus_loss", "Window blur / focus loss"
+    FOCUS_REGAIN = "focus_regain", "Focus regained"
+    FULLSCREEN_EXIT = "fullscreen_exit", "Fullscreen exit"
+    COPY_ATTEMPT = "copy_attempt", "Copy attempt"
+    PASTE_ATTEMPT = "paste_attempt", "Paste attempt"
+    HEARTBEAT = "heartbeat", "Still-present heartbeat"
+
+
+class ProctorEvent(AcademicBase):
+    """Append-only lockdown signal reported during an attempt. Immutable evidence:
+    ``client_timestamp`` is when the browser saw it, ``created_at`` when we did."""
+
+    attempt = models.ForeignKey(
+        ExamAttempt, on_delete=models.PROTECT, related_name="proctor_events"
+    )
+    type = models.CharField(max_length=20, choices=ProctorEventType.choices)
+    client_timestamp = models.DateTimeField()
+    detail = models.JSONField(null=True, blank=True)
+
+    class Meta:
+        db_table = "cbt_proctor_event"
+        ordering = ["attempt", "client_timestamp", "created_at"]
+        indexes = [models.Index(fields=["attempt", "type"])]
+
+    def __str__(self):
+        return f"{self.attempt_id} · {self.type} @ {self.client_timestamp:%Y-%m-%d %H:%M:%S}"
+
+    def save(self, *args, **kwargs):
+        if not self._state.adding:
+            raise AppendOnlyError("Proctoring events are append-only and cannot be modified.")
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise AppendOnlyError("Proctoring events are append-only and cannot be deleted.")
+
+
+def webcam_upload_path(instance, filename):
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else "bin"
+    return f"cbt/webcam/{instance.institution_id}/{instance.attempt_id}/{uuid.uuid4().hex}.{ext}"
+
+
+class WebcamCapture(AcademicBase):
+    """A webcam snapshot/clip for an attempt, stored in the configured media
+    backend (Supabase S3, private ACL, in prod).
+
+    Data governance: ``expires_at`` is stamped from the institution's
+    ``webcam_retention_days``; a later cleanup task purges the media + row once it
+    passes (retention is enforced there, not in the request path). Access is scoped
+    by ``cbt.proctoring.can_view_webcam`` — staff in scope + a valid auditor token
+    only, never other students, never cross-tenant.
+    """
+
+    class Kind(models.TextChoices):
+        SNAPSHOT = "snapshot", "Snapshot"
+        CLIP = "clip", "Short clip"
+
+    attempt = models.ForeignKey(
+        ExamAttempt, on_delete=models.PROTECT, related_name="webcam_captures"
+    )
+    kind = models.CharField(max_length=10, choices=Kind.choices, default=Kind.SNAPSHOT)
+    media = models.FileField(upload_to=webcam_upload_path, max_length=255)
+    original_filename = models.CharField(max_length=255, blank=True, default="")
+    captured_at = models.DateTimeField()
+    expires_at = models.DateTimeField(
+        help_text="When retention lapses; media is purged by the cleanup task after this."
+    )
+    # Advisory anomaly signal (client or future analysis); feeds the flag evaluator.
+    is_anomalous = models.BooleanField(default=False)
+    anomaly_reason = models.CharField(max_length=200, blank=True, default="")
+
+    class Meta:
+        db_table = "cbt_webcam_capture"
+        ordering = ["attempt", "captured_at"]
+
+    def __str__(self):
+        return f"{self.attempt_id} · {self.kind} @ {self.captured_at:%Y-%m-%d %H:%M:%S}"
+
+
+class CheatingFlagStatus(models.TextChoices):
+    RAISED = "raised", "Raised (awaiting review)"
+    DISMISSED = "dismissed", "Dismissed (false positive)"
+    ESCALATED = "escalated", "Escalated to HOD"
+
+
+class CheatingFlag(AcademicBase):
+    """An auto-raised integrity concern for one attempt, strictly for human review.
+    Raising/dismissing/escalating NEVER changes the attempt's score or status (a
+    tested invariant). One flag per attempt."""
+
+    attempt = models.ForeignKey(
+        ExamAttempt, on_delete=models.PROTECT, related_name="cheating_flags"
+    )
+    status = models.CharField(
+        max_length=12, choices=CheatingFlagStatus.choices, default=CheatingFlagStatus.RAISED
+    )
+    auto_raised = models.BooleanField(default=True)
+    # Which thresholds tripped: a list of {code, detail, count, threshold}.
+    reasons = models.JSONField(default=list, blank=True)
+
+    reviewed_by = models.ForeignKey(
+        User, on_delete=models.PROTECT, related_name="+", null=True, blank=True
+    )
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    review_notes = models.TextField(blank=True, default="")
+
+    escalated_to = models.ForeignKey(
+        User, on_delete=models.PROTECT, related_name="+", null=True, blank=True
+    )
+
+    class Meta:
+        db_table = "cbt_cheating_flag"
+        ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(fields=["attempt"], name="uniq_flag_per_attempt"),
+        ]
+
+    def __str__(self):
+        return f"flag({self.status}) · {self.attempt_id}"
