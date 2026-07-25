@@ -255,3 +255,38 @@ class ResultAuditLog(AcademicBase):
 
     def delete(self, *args, **kwargs):
         raise ImmutableRecordError("Audit log entries cannot be deleted.")
+
+
+def export_upload_path(instance, filename):
+    return f"exports/{instance.institution_id}/{instance.id}/{filename}"
+
+
+class ExportJob(AcademicBase):
+    """A generated export of a result sheet. Small classes render inline in the
+    request; large ones are produced by a Celery worker and their file is stored
+    here for download. Nothing about the underlying result is changed."""
+
+    class Kind(models.TextChoices):
+        BROADSHEET = "broadsheet", "Broadsheet (xlsx)"
+        OGR = "ogr", "Official Grade Report (pdf)"
+
+    class Status(models.TextChoices):
+        PENDING = "pending", "Pending"
+        PROCESSING = "processing", "Processing"
+        COMPLETED = "completed", "Completed"
+        FAILED = "failed", "Failed"
+
+    result = models.ForeignKey(CourseResult, on_delete=models.PROTECT, related_name="export_jobs")
+    kind = models.CharField(max_length=12, choices=Kind.choices)
+    status = models.CharField(max_length=12, choices=Status.choices, default=Status.PENDING)
+    file = models.FileField(upload_to=export_upload_path, max_length=255, blank=True, null=True)
+    filename = models.CharField(max_length=255, blank=True, default="")
+    message = models.CharField(max_length=255, blank=True, default="")
+    requested_by = models.ForeignKey(User, on_delete=models.PROTECT, related_name="+")
+
+    class Meta:
+        db_table = "results_export_job"
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.kind} export of {self.result_id} ({self.status})"

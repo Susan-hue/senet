@@ -36,6 +36,7 @@ INSTALLED_APPS = [
     "results",
     "assessments",
     "grading",
+    "auditor",
 ]
 
 MIDDLEWARE = [
@@ -151,6 +152,10 @@ PASSWORD_RESET_MAX_AGE = 60 * 60
 
 IMPORT_MAX_FILE_BYTES = config("IMPORT_MAX_FILE_BYTES", default=5 * 1024 * 1024, cast=int)
 IMPORT_SYNC_MAX_ROWS = config("IMPORT_SYNC_MAX_ROWS", default=500, cast=int)
+
+# Classes larger than this have their broadsheet generated on the Celery worker
+# rather than inline in the request.
+BROADSHEET_ASYNC_THRESHOLD = config("BROADSHEET_ASYNC_THRESHOLD", default=200, cast=int)
 
 CELERY_BROKER_URL = config("CELERY_BROKER_URL", default="redis://localhost:6379/0")
 
