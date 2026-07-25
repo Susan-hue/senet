@@ -1,24 +1,38 @@
 from rest_framework import status
 from rest_framework.exceptions import NotFound, PermissionDenied
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.views import APIView
+from rest_framework_simplejwt.authentication import JWTAuthentication
 
 from accounts.pagination import DirectoryPagination
 from accounts.responses import error_response, success_response
-from cbt import services
-from cbt.models import Exam, ExamAttempt, Question, QuestionBank
-from cbt.permissions import IsCbtParticipant, IsExamManager, IsStudent
+from auditor.authentication import AuditorTokenAuthentication
+from cbt import proctoring, services
+from cbt.models import CheatingFlag, Exam, ExamAttempt, Question, QuestionBank
+from cbt.permissions import (
+    IsCbtParticipant,
+    IsExamManager,
+    IsProctoringReviewer,
+    IsStudent,
+)
 from cbt.serializers import (
     AnswerEchoSerializer,
     AttemptQuestionSerializer,
+    CheatingFlagSerializer,
     CreateExamSerializer,
     CreateQuestionBankSerializer,
     CreateQuestionSerializer,
     ExamAttemptSerializer,
     ExamSerializer,
+    ProctorEventSerializer,
     QuestionBankSerializer,
     QuestionSerializer,
+    RecordEventSerializer,
+    ReviewFlagSerializer,
     SaveAnswersBatchSerializer,
     SaveAnswerSerializer,
+    WebcamCaptureSerializer,
+    WebcamUploadSerializer,
 )
 from tenancy.scoping import set_current_institution
 
@@ -255,3 +269,149 @@ class SubmitAttemptView(TenantAPIView):
         attempt = _get_own_attempt(request.user, pk)
         attempt = services.submit_attempt(student=request.user, attempt=attempt)
         return success_response(ExamAttemptSerializer(attempt).data, "Attempt submitted.")
+
+
+# --------------------------------------------------------------------------- #
+# Proctoring                                                                  #
+# --------------------------------------------------------------------------- #
+
+
+def _get_attempt_in_tenant(principal, pk):
+    attempt = (
+        ExamAttempt.all_objects.select_related(
+            "exam", "exam__course", "exam__course__department", "student"
+        )
+        .filter(pk=pk, institution_id=principal.institution_id)
+        .first()
+    )
+    if attempt is None:
+        raise NotFound("Attempt not found.")
+    return attempt
+
+
+def _get_flag(user, pk):
+    flag = (
+        CheatingFlag.all_objects.select_related(
+            "attempt", "attempt__exam", "attempt__exam__course", "attempt__exam__course__department"
+        )
+        .filter(pk=pk, institution_id=user.institution_id)
+        .first()
+    )
+    if flag is None:
+        raise NotFound("Flag not found.")
+    return flag
+
+
+class RecordProctorEventView(TenantAPIView):
+    """The client reports a lockdown signal (tab-switch, blur, fullscreen-exit,
+    copy/paste, heartbeat). Append-only; owner-only."""
+
+    permission_classes = [IsStudent]
+
+    def post(self, request, pk):
+        attempt = _get_own_attempt(request.user, pk)
+        serializer = RecordEventSerializer(data=request.data)
+        if not serializer.is_valid():
+            return error_response("Could not record the event.", serializer.errors)
+        event = proctoring.record_event(
+            attempt=attempt,
+            event_type=serializer.validated_data["type"],
+            client_timestamp=serializer.validated_data["client_timestamp"],
+            detail=serializer.validated_data["detail"],
+        )
+        return success_response(
+            ProctorEventSerializer(event).data, "Event recorded.", status.HTTP_201_CREATED
+        )
+
+
+class WebcamView(TenantAPIView):
+    """POST a webcam snapshot/clip (student, own attempt); GET the list of an
+    attempt's captures (staff in scope or a valid auditor token — never a
+    student, never cross-tenant)."""
+
+    authentication_classes = [JWTAuthentication, AuditorTokenAuthentication]
+
+    def get_permissions(self):
+        if self.request.method == "POST":
+            return [IsStudent()]
+        return [IsAuthenticated()]
+
+    def post(self, request, pk):
+        attempt = _get_own_attempt(request.user, pk)
+        serializer = WebcamUploadSerializer(data=request.data)
+        if not serializer.is_valid():
+            return error_response("Could not store the capture.", serializer.errors)
+        capture = proctoring.create_webcam_capture(attempt=attempt, **serializer.validated_data)
+        return success_response(
+            WebcamCaptureSerializer(capture).data, "Capture stored.", status.HTTP_201_CREATED
+        )
+
+    def get(self, request, pk):
+        attempt = _get_attempt_in_tenant(request.user, pk)
+        if not proctoring.can_view_webcam(request.user, attempt):
+            raise PermissionDenied("You are not permitted to view this attempt's webcam media.")
+        captures = attempt.webcam_captures.order_by("captured_at")
+        return success_response(WebcamCaptureSerializer(captures, many=True).data)
+
+
+class IntegrityReportView(TenantAPIView):
+    permission_classes = [IsProctoringReviewer]
+
+    def get(self, request, pk):
+        attempt = _get_attempt_in_tenant(request.user, pk)
+        if not proctoring.can_view_proctoring(request.user, attempt):
+            raise PermissionDenied("You are not permitted to view this attempt's integrity data.")
+        return success_response(proctoring.build_integrity_report(attempt))
+
+
+class AttemptFlagView(TenantAPIView):
+    permission_classes = [IsProctoringReviewer]
+
+    def get(self, request, pk):
+        attempt = _get_attempt_in_tenant(request.user, pk)
+        if not proctoring.can_view_proctoring(request.user, attempt):
+            raise PermissionDenied("You are not permitted to view this attempt's flag.")
+        flag = CheatingFlag.all_objects.filter(attempt=attempt).first()
+        if flag is None:
+            raise NotFound("No flag for this attempt.")
+        return success_response(CheatingFlagSerializer(flag).data)
+
+
+class FlagListView(TenantAPIView):
+    permission_classes = [IsProctoringReviewer]
+
+    def get(self, request):
+        qs = proctoring.visible_flags(request.user)
+        for param in ("status",):
+            value = request.query_params.get(param)
+            if value:
+                qs = qs.filter(**{param: value})
+        return _paginated(request, self, qs, CheatingFlagSerializer)
+
+
+class DismissFlagView(TenantAPIView):
+    permission_classes = [IsProctoringReviewer]
+
+    def post(self, request, pk):
+        flag = _get_flag(request.user, pk)
+        serializer = ReviewFlagSerializer(data=request.data)
+        if not serializer.is_valid():
+            return error_response("Could not dismiss the flag.", serializer.errors)
+        flag = proctoring.dismiss_flag(
+            actor=request.user, flag=flag, notes=serializer.validated_data["notes"]
+        )
+        return success_response(CheatingFlagSerializer(flag).data, "Flag dismissed.")
+
+
+class EscalateFlagView(TenantAPIView):
+    permission_classes = [IsProctoringReviewer]
+
+    def post(self, request, pk):
+        flag = _get_flag(request.user, pk)
+        serializer = ReviewFlagSerializer(data=request.data)
+        if not serializer.is_valid():
+            return error_response("Could not escalate the flag.", serializer.errors)
+        flag = proctoring.escalate_flag(
+            actor=request.user, flag=flag, notes=serializer.validated_data["notes"]
+        )
+        return success_response(CheatingFlagSerializer(flag).data, "Flag escalated to the HOD.")
