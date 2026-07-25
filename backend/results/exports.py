@@ -7,6 +7,7 @@ alike, with the caller responsible for scoping/authorization.
 """
 
 import io
+import secrets
 from decimal import Decimal
 
 from openpyxl import Workbook
@@ -85,11 +86,13 @@ def build_ogr_pdf(result):
 
     buffer = io.BytesIO()
     # Modification and annotation are disabled; the file opens without a password
-    # but cannot be edited in a compliant viewer. A random owner password means
-    # nobody holds the key to lift those restrictions.
+    # but cannot be edited in a compliant viewer. The owner password is random and
+    # discarded, so no one can lift those restrictions. (Passing ownerPassword=None
+    # would make reportlab reuse the empty user password, leaving them trivially
+    # removable.)
     encryption = StandardEncryption(
         userPassword="",
-        ownerPassword=None,
+        ownerPassword=secrets.token_urlsafe(24),
         canModify=0,
         canCopy=1,
         canPrint=1,
