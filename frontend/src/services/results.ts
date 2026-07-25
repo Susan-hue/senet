@@ -101,10 +101,7 @@ export async function downloadResultExport(
   const deadline = Date.now() + POLL_TIMEOUT_MS;
   while (Date.now() < deadline) {
     await sleep(POLL_INTERVAL_MS);
-    const polled = await requestFileOrJob<ExportJob>(
-      `${RESULTS}/export-jobs/${jobId}`,
-      token,
-    );
+    const polled = await requestFileOrJob<ExportJob>(`${RESULTS}/export-jobs/${jobId}`, token);
     if ("file" in polled) {
       saveBlob(polled.file);
       return polled.file.filename;
