@@ -37,6 +37,7 @@ INSTALLED_APPS = [
     "assessments",
     "grading",
     "auditor",
+    "cbt",
 ]
 
 MIDDLEWARE = [
@@ -176,6 +177,17 @@ if CELERY_BROKER_URL.startswith("rediss://"):
     CELERY_BROKER_USE_SSL = {"ssl_cert_reqs": _CELERY_SSL_CERT_REQS}
 if CELERY_RESULT_BACKEND.startswith("rediss://"):
     CELERY_REDIS_BACKEND_USE_SSL = {"ssl_cert_reqs": _CELERY_SSL_CERT_REQS}
+
+# How often Celery beat sweeps for exam attempts past their deadline and
+# auto-submits them. Short by design — the finalizer is idempotent and row-locked,
+# so frequent, overlapping runs are safe.
+CBT_FINALIZE_INTERVAL_SECONDS = config("CBT_FINALIZE_INTERVAL_SECONDS", default=60, cast=int)
+CELERY_BEAT_SCHEDULE = {
+    "cbt-finalize-expired-attempts": {
+        "task": "cbt.tasks.finalize_expired_attempts_task",
+        "schedule": float(CBT_FINALIZE_INTERVAL_SECONDS),
+    },
+}
 
 CORS_ALLOWED_ORIGINS = config("CORS_ALLOWED_ORIGINS", default="http://localhost:5173", cast=Csv())
 CORS_ALLOW_CREDENTIALS = True
