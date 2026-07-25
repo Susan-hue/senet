@@ -67,6 +67,80 @@ export async function apiRequest<T>(
   return envelope;
 }
 
+export interface DownloadedFile {
+  blob: Blob;
+  filename: string;
+}
+
+function parseFilename(disposition: string | null, fallback: string): string {
+  if (!disposition) return fallback;
+  const star = /filename\*=(?:UTF-8'')?([^;]+)/i.exec(disposition);
+  if (star) return decodeURIComponent(star[1].replace(/"/g, "").trim());
+  const plain = /filename="?([^";]+)"?/i.exec(disposition);
+  return plain ? plain[1].trim() : fallback;
+}
+
+/**
+ * GET an export endpoint that returns either a streamed file (small classes /
+ * completed jobs) or a JSON envelope wrapping an ExportJob (large classes still
+ * generating). Callers branch on which arm comes back.
+ */
+export async function requestFileOrJob<J>(
+  path: string,
+  token?: string | null,
+  fallbackName = "download",
+): Promise<{ file: DownloadedFile } | { job: J }> {
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, {
+      method: "GET",
+      headers,
+      credentials: "include",
+    });
+  } catch {
+    throw new ApiError("Network error. Check your connection and try again.", 0, null);
+  }
+
+  const contentType = response.headers.get("Content-Type") ?? "";
+  if (contentType.includes("application/json")) {
+    let envelope: ApiEnvelope<J> | null = null;
+    try {
+      envelope = (await response.json()) as ApiEnvelope<J>;
+    } catch {
+      envelope = null;
+    }
+    if (!envelope || !response.ok || envelope.status === "error") {
+      throw new ApiError(
+        envelope?.message || `Export failed (${response.status}).`,
+        response.status,
+        envelope?.errors ?? null,
+      );
+    }
+    return { job: envelope.data as J };
+  }
+
+  if (!response.ok) {
+    throw new ApiError(`Export failed (${response.status}).`, response.status, null);
+  }
+  const blob = await response.blob();
+  const filename = parseFilename(response.headers.get("Content-Disposition"), fallbackName);
+  return { file: { blob, filename } };
+}
+
+export function saveBlob(file: DownloadedFile): void {
+  const url = URL.createObjectURL(file.blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = file.filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
 export async function apiUpload<T>(
   path: string,
   file: File,

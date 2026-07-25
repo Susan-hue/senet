@@ -13,13 +13,14 @@ import { ApiError } from "../../services/api";
 import { getCourse, listEnrolments } from "../../services/accounts";
 import {
   createResult,
+  downloadResultExport,
   getResult,
   listResults,
   recordScore,
   submitResult,
 } from "../../services/results";
 import { RESULT_STATUS_META } from "../../types";
-import type { Course, CourseResult, Enrolment, StudentScore } from "../../types";
+import type { Course, CourseResult, Enrolment, ExportKind, StudentScore } from "../../types";
 import { useAsyncData, useDebounced } from "../admin/useAsyncData";
 import { PageHeader, Pager, SearchBox, firstError } from "../admin/ui";
 import adminStyles from "../admin/admin.module.css";
@@ -86,6 +87,7 @@ export function ScoreSheetPage() {
   const [confirmSubmit, setConfirmSubmit] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [exporting, setExporting] = useState<ExportKind | null>(null);
 
   const [query, setQuery] = useState("");
   const search = useDebounced(query.trim().toLowerCase());
@@ -258,6 +260,30 @@ export function ScoreSheetPage() {
     }
   }
 
+  async function doExport(kind: ExportKind) {
+    if (!result || exporting) return;
+    setExporting(kind);
+    setBanner(null);
+    const label = kind === "ogr" ? "Grade report" : "Broadsheet";
+    try {
+      await downloadResultExport(result.id, kind, token, {
+        onQueued: () =>
+          setBanner({
+            kind: "success",
+            text: "Large class — generating your file. The download will start automatically.",
+          }),
+      });
+      setBanner({ kind: "success", text: `${label} downloaded.` });
+    } catch (err) {
+      setBanner({
+        kind: "error",
+        text: err instanceof ApiError ? err.message : `Could not generate the ${label.toLowerCase()}.`,
+      });
+    } finally {
+      setExporting(null);
+    }
+  }
+
   const savedCount = saved.size;
   const canSubmit = editable && result !== null && savedCount > 0 && dirtyIds.length === 0;
   const submitHint = !editable
@@ -294,11 +320,33 @@ export function ScoreSheetPage() {
             : undefined
         }
         actions={
-          meta ? (
-            <Badge tone={meta.tone}>{meta.label}</Badge>
-          ) : (
-            <Badge tone="neutral">Not started</Badge>
-          )
+          <div className={styles.headerActions}>
+            {meta ? (
+              <Badge tone={meta.tone}>{meta.label}</Badge>
+            ) : (
+              <Badge tone="neutral">Not started</Badge>
+            )}
+            {result ? (
+              <div className={styles.exportGroup}>
+                <Button
+                  variant="ghost"
+                  onClick={() => void doExport("broadsheet")}
+                  loading={exporting === "broadsheet"}
+                  disabled={exporting !== null}
+                >
+                  Broadsheet .xlsx
+                </Button>
+                <Button
+                  variant="ghost"
+                  onClick={() => void doExport("ogr")}
+                  loading={exporting === "ogr"}
+                  disabled={exporting !== null}
+                >
+                  Grade report .pdf
+                </Button>
+              </div>
+            ) : null}
+          </div>
         }
       />
 

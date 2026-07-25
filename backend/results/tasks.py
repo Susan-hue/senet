@@ -1,14 +1,19 @@
 from celery import shared_task
 from django.core.files.base import ContentFile
 
-from results.exports import build_broadsheet_xlsx
+from results.exports import build_broadsheet_xlsx, build_ogr_pdf
 from results.models import ExportJob
+
+_BUILDERS = {
+    ExportJob.Kind.BROADSHEET: build_broadsheet_xlsx,
+    ExportJob.Kind.OGR: build_ogr_pdf,
+}
 
 
 @shared_task
-def generate_broadsheet(export_job_id):
-    """Render a broadsheet for a large class off the request path and store the
-    file on its ExportJob. Read-only with respect to the result: it only reads
+def generate_export(export_job_id):
+    """Render a result export (broadsheet or OGR) off the request path and store
+    the file on its ExportJob. Read-only with respect to the result: it only reads
     score rows and writes the job's own file/status."""
     job = ExportJob.all_objects.select_related(
         "institution", "result__course", "result__session", "result__semester", "result__lecturer"
@@ -16,7 +21,7 @@ def generate_broadsheet(export_job_id):
     try:
         job.status = ExportJob.Status.PROCESSING
         job.save(update_fields=["status", "updated_at"])
-        data = build_broadsheet_xlsx(job.result)
+        data = _BUILDERS[job.kind](job.result)
         job.file.save(job.filename, ContentFile(data), save=False)
         job.status = ExportJob.Status.COMPLETED
         job.save(update_fields=["file", "status", "updated_at"])

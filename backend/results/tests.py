@@ -1354,7 +1354,7 @@ class BroadsheetExportTests(ApprovalTestBase):
             status.HTTP_404_NOT_FOUND,
         )
 
-    @override_settings(BROADSHEET_ASYNC_THRESHOLD=0)
+    @override_settings(EXPORT_ASYNC_THRESHOLD=0)
     def test_large_class_generates_via_celery_job(self):
         result = self.ratified()
         self.client.force_authenticate(self.lecturer)
@@ -1366,9 +1366,26 @@ class BroadsheetExportTests(ApprovalTestBase):
                 # CELERY_TASK_ALWAYS_EAGER runs the task inline under tests.
                 job = ExportJob.all_objects.get(pk=job_id)
                 self.assertEqual(job.status, ExportJob.Status.COMPLETED)
+                self.assertEqual(job.kind, ExportJob.Kind.BROADSHEET)
                 download = self.client.get(reverse("export-job-detail", args=[job_id]))
                 self.assertEqual(download.status_code, status.HTTP_200_OK)
                 self.assertEqual(
                     download["Content-Type"],
                     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 )
+
+    @override_settings(EXPORT_ASYNC_THRESHOLD=0)
+    def test_large_class_ogr_generates_via_celery_job(self):
+        result = self.ratified()
+        self.client.force_authenticate(self.lecturer)
+        with tempfile.TemporaryDirectory() as media:
+            with override_settings(MEDIA_ROOT=media):
+                response = self.client.get(reverse("result-ogr", args=[result.id]))
+                self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
+                job_id = response.data["data"]["id"]
+                job = ExportJob.all_objects.get(pk=job_id)
+                self.assertEqual(job.status, ExportJob.Status.COMPLETED)
+                self.assertEqual(job.kind, ExportJob.Kind.OGR)
+                download = self.client.get(reverse("export-job-detail", args=[job_id]))
+                self.assertEqual(download.status_code, status.HTTP_200_OK)
+                self.assertEqual(download["Content-Type"], "application/pdf")
