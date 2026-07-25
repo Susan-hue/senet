@@ -277,7 +277,8 @@ export function ScoreSheetPage() {
     } catch (err) {
       setBanner({
         kind: "error",
-        text: err instanceof ApiError ? err.message : `Could not generate the ${label.toLowerCase()}.`,
+        text:
+          err instanceof ApiError ? err.message : `Could not generate the ${label.toLowerCase()}.`,
       });
     } finally {
       setExporting(null);
