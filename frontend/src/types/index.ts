@@ -320,6 +320,21 @@ export interface CourseResultDetail extends CourseResult {
   scores: StudentScore[];
 }
 
+export type ExportKind = "broadsheet" | "ogr";
+
+export type ExportJobStatus = "pending" | "processing" | "completed" | "failed";
+
+export interface ExportJob {
+  id: string;
+  result: string;
+  kind: ExportKind;
+  status: ExportJobStatus;
+  filename: string;
+  message: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Enrolment {
   id: string;
   institution: string;

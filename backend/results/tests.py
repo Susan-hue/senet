@@ -1,13 +1,16 @@
 """Results pipeline tests: state machine guards, append-only history, and the
 transactional audit log."""
 
+import io
+import tempfile
 import threading
 from decimal import Decimal
 from unittest import mock, skipUnless
 
 from django.db import IntegrityError, connection, connections, transaction
-from django.test import TransactionTestCase
+from django.test import TransactionTestCase, override_settings
 from django.urls import reverse
+from openpyxl import load_workbook
 from rest_framework import status
 from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
 from rest_framework.test import APITestCase
@@ -24,10 +27,12 @@ from accounts.models import (
     Session,
     User,
 )
+from results.exports import build_broadsheet_xlsx, ogr_context
 from results.models import (
     AmendmentStatus,
     AuditAction,
     CourseResult,
+    ExportJob,
     ExternalExaminerReport,
     ImmutableRecordError,
     ResultAmendment,
@@ -1224,3 +1229,163 @@ class DatabaseTriggerImmutabilityTests(ResultsTestBase):
             with transaction.atomic():
                 ResultAuditLog.all_objects.filter(pk=entry.pk).delete()
         self.assertTrue(ResultAuditLog.all_objects.filter(pk=entry.pk).exists())
+
+
+class OGRExportTests(ApprovalTestBase):
+    def ratified(self):
+        self.student.identifier = "CSC/2021/001"
+        self.student.save(update_fields=["identifier"])
+        return self.advance_to(self.make_submitted(), ResultStatus.RATIFIED_BY_SENATE)
+
+    def test_ogr_context_reflects_current_scores_and_ratified_state(self):
+        result = self.ratified()
+        context = ogr_context(result)
+        self.assertTrue(context["is_ratified"])
+        self.assertEqual(context["course_code"], "CSC 101")
+        self.assertEqual(len(context["students"]), 1)
+        row = context["students"][0]
+        self.assertEqual(row["matric"], "CSC/2021/001")
+        self.assertEqual(row["ca"], "30.00")
+        self.assertEqual(row["exam"], "50.00")
+        self.assertEqual(row["total"], "80.00")
+        self.assertEqual(row["grade"], "A")
+
+    def test_ogr_context_shows_only_current_row_after_supersession(self):
+        result = self.ratified()
+        current = StudentScore.all_objects.get(result=result, is_current=True)
+        superseded = StudentScore.all_objects.create(
+            institution=result.institution,
+            result=result,
+            student=self.student,
+            ca_score=Decimal("10"),
+            exam_score=Decimal("10"),
+            total=Decimal("20"),
+            grade="F",
+            is_current=False,
+            supersedes=current,
+        )
+        context = ogr_context(result)
+        self.assertEqual(len(context["students"]), 1)
+        self.assertEqual(context["students"][0]["total"], "80.00")
+        self.assertNotIn(str(superseded.id), [s["matric"] for s in context["students"]])
+
+    def test_owner_lecturer_downloads_pdf(self):
+        result = self.ratified()
+        self.client.force_authenticate(self.lecturer)
+        response = self.client.get(reverse("result-ogr", args=[result.id]))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response["Content-Type"], "application/pdf")
+        self.assertTrue(response.content.startswith(b"%PDF"))
+
+    def test_hod_in_scope_downloads_pdf(self):
+        result = self.ratified()
+        self.client.force_authenticate(self.hod)
+        self.assertEqual(
+            self.client.get(reverse("result-ogr", args=[result.id])).status_code,
+            status.HTTP_200_OK,
+        )
+
+    def test_out_of_scope_actor_cannot_download(self):
+        result = self.ratified()
+        for actor in (self.unassigned_lecturer, self.wrong_hod, self.wrong_dean):
+            self.client.force_authenticate(actor)
+            self.assertEqual(
+                self.client.get(reverse("result-ogr", args=[result.id])).status_code,
+                status.HTTP_404_NOT_FOUND,
+                actor.email,
+            )
+
+    def test_student_role_is_forbidden(self):
+        result = self.ratified()
+        self.client.force_authenticate(self.student)
+        self.assertEqual(
+            self.client.get(reverse("result-ogr", args=[result.id])).status_code,
+            status.HTTP_403_FORBIDDEN,
+        )
+
+    def test_foreign_tenant_cannot_download(self):
+        result = self.ratified()
+        foreign = Institution.objects.create(name="FUTO", code="futo")
+        foreign_senate = _member(foreign, "senate@futo.edu", Role.SENATE_ADMIN)
+        self.client.force_authenticate(foreign_senate)
+        self.assertEqual(
+            self.client.get(reverse("result-ogr", args=[result.id])).status_code,
+            status.HTTP_404_NOT_FOUND,
+        )
+
+
+class BroadsheetExportTests(ApprovalTestBase):
+    def ratified(self):
+        self.student.identifier = "CSC/2021/001"
+        self.student.save(update_fields=["identifier"])
+        return self.advance_to(self.make_submitted(), ResultStatus.RATIFIED_BY_SENATE)
+
+    def test_broadsheet_bytes_contain_the_class_grid(self):
+        result = self.ratified()
+        wb = load_workbook(io.BytesIO(build_broadsheet_xlsx(result)))
+        ws = wb.active
+        self.assertEqual(
+            [c.value for c in ws[5]],
+            ["S/N", "Matric No.", "Name", "CA", "Exam", "Total", "Grade"],
+        )
+        self.assertEqual(ws["B6"].value, "CSC/2021/001")
+        self.assertEqual(ws["D6"].value, 30.0)
+        self.assertEqual(ws["E6"].value, 50.0)
+        self.assertEqual(ws["F6"].value, 80.0)
+        self.assertEqual(ws["G6"].value, "A")
+
+    def test_endpoint_returns_xlsx_inline_for_small_class(self):
+        result = self.ratified()
+        self.client.force_authenticate(self.lecturer)
+        response = self.client.get(reverse("result-broadsheet", args=[result.id]))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            response["Content-Type"],
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+        wb = load_workbook(io.BytesIO(response.content))
+        self.assertEqual(wb.active["G6"].value, "A")
+
+    def test_out_of_scope_actor_cannot_download_broadsheet(self):
+        result = self.ratified()
+        self.client.force_authenticate(self.wrong_hod)
+        self.assertEqual(
+            self.client.get(reverse("result-broadsheet", args=[result.id])).status_code,
+            status.HTTP_404_NOT_FOUND,
+        )
+
+    @override_settings(EXPORT_ASYNC_THRESHOLD=0)
+    def test_large_class_generates_via_celery_job(self):
+        result = self.ratified()
+        self.client.force_authenticate(self.lecturer)
+        with tempfile.TemporaryDirectory() as media:
+            with override_settings(MEDIA_ROOT=media):
+                response = self.client.get(reverse("result-broadsheet", args=[result.id]))
+                self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
+                job_id = response.data["data"]["id"]
+                # CELERY_TASK_ALWAYS_EAGER runs the task inline under tests.
+                job = ExportJob.all_objects.get(pk=job_id)
+                self.assertEqual(job.status, ExportJob.Status.COMPLETED)
+                self.assertEqual(job.kind, ExportJob.Kind.BROADSHEET)
+                download = self.client.get(reverse("export-job-detail", args=[job_id]))
+                self.assertEqual(download.status_code, status.HTTP_200_OK)
+                self.assertEqual(
+                    download["Content-Type"],
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                )
+
+    @override_settings(EXPORT_ASYNC_THRESHOLD=0)
+    def test_large_class_ogr_generates_via_celery_job(self):
+        result = self.ratified()
+        self.client.force_authenticate(self.lecturer)
+        with tempfile.TemporaryDirectory() as media:
+            with override_settings(MEDIA_ROOT=media):
+                response = self.client.get(reverse("result-ogr", args=[result.id]))
+                self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
+                job_id = response.data["data"]["id"]
+                job = ExportJob.all_objects.get(pk=job_id)
+                self.assertEqual(job.status, ExportJob.Status.COMPLETED)
+                self.assertEqual(job.kind, ExportJob.Kind.OGR)
+                download = self.client.get(reverse("export-job-detail", args=[job_id]))
+                self.assertEqual(download.status_code, status.HTTP_200_OK)
+                self.assertEqual(download["Content-Type"], "application/pdf")

@@ -3,7 +3,13 @@ from decimal import Decimal
 from rest_framework import serializers
 
 from accounts.models import Course, Programme, Role, Semester, Session, User
-from results.models import CourseResult, ExternalExaminerReport, ResultAmendment, StudentScore
+from results.models import (
+    CourseResult,
+    ExportJob,
+    ExternalExaminerReport,
+    ResultAmendment,
+    StudentScore,
+)
 from tenancy.scoping import get_current_institution
 
 
@@ -195,6 +201,22 @@ class ResultAmendmentSerializer(serializers.ModelSerializer):
             "returned_reason",
             "raised_by",
             "applied_score",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = fields
+
+
+class ExportJobSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ExportJob
+        fields = [
+            "id",
+            "result",
+            "kind",
+            "status",
+            "filename",
+            "message",
             "created_at",
             "updated_at",
         ]
