@@ -129,6 +129,16 @@ class Exam(AcademicBase):
         User, on_delete=models.PROTECT, related_name="+", limit_choices_to={"role": Role.LECTURER}
     )
     banks = models.ManyToManyField(QuestionBank, related_name="exams")
+    # When set, this CBT produces the score for a Continuous Assessment item:
+    # graded attempts sync into the assessments CA aggregation. Optional — a plain
+    # main exam leaves it null.
+    assessment_item = models.OneToOneField(
+        "assessments.AssessmentItem",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="cbt_exam",
+    )
 
     title = models.CharField(max_length=200)
     exam_type = models.CharField(max_length=8, choices=ExamType.choices, default=ExamType.MAIN)

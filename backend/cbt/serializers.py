@@ -5,6 +5,7 @@ from django.utils import timezone
 from rest_framework import serializers
 
 from accounts.models import Course, Semester, Session
+from assessments.models import AssessmentItem
 from cbt.models import (
     Answer,
     AttemptStatus,
@@ -345,3 +346,33 @@ class CheatingFlagSerializer(serializers.ModelSerializer):
 
 class ReviewFlagSerializer(serializers.Serializer):
     notes = serializers.CharField(required=False, allow_blank=True, default="")
+
+
+class GenerateQuestionsSerializer(serializers.Serializer):
+    notes = serializers.CharField(min_length=10)
+    count = serializers.IntegerField(
+        min_value=1, max_value=settings.CBT_AI_MAX_QUESTIONS, default=5
+    )
+    question_types = serializers.ListField(
+        child=serializers.ChoiceField(choices=QuestionType.choices),
+        required=False,
+        allow_empty=False,
+        default=list,
+    )
+
+    def validate(self, attrs):
+        if not attrs.get("question_types"):
+            attrs["question_types"] = [QuestionType.MCQ]
+        return attrs
+
+
+class LinkCaItemSerializer(serializers.Serializer):
+    item = serializers.PrimaryKeyRelatedField(queryset=AssessmentItem.objects.none())
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        institution = get_current_institution()
+        if institution is not None:
+            self.fields["item"].queryset = AssessmentItem.all_objects.filter(
+                institution=institution
+            )
