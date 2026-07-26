@@ -527,6 +527,10 @@ def _finalize(attempt, *, auto):
             "updated_at",
         ]
     )
+    if attempt.status == AttemptStatus.GRADED:
+        from cbt.ca import sync_ca_grade_for_attempt
+
+        sync_ca_grade_for_attempt(attempt)
 
 
 def _grade_objective(attempt):

@@ -7,7 +7,7 @@ from rest_framework_simplejwt.authentication import JWTAuthentication
 from accounts.pagination import DirectoryPagination
 from accounts.responses import error_response, success_response
 from auditor.authentication import AuditorTokenAuthentication
-from cbt import proctoring, services
+from cbt import ai, ca, proctoring, services
 from cbt.models import CheatingFlag, Exam, ExamAttempt, Question, QuestionBank
 from cbt.permissions import (
     IsCbtParticipant,
@@ -24,6 +24,8 @@ from cbt.serializers import (
     CreateQuestionSerializer,
     ExamAttemptSerializer,
     ExamSerializer,
+    GenerateQuestionsSerializer,
+    LinkCaItemSerializer,
     ProctorEventSerializer,
     QuestionBankSerializer,
     QuestionSerializer,
@@ -415,3 +417,48 @@ class EscalateFlagView(TenantAPIView):
             actor=request.user, flag=flag, notes=serializer.validated_data["notes"]
         )
         return success_response(CheatingFlagSerializer(flag).data, "Flag escalated to the HOD.")
+
+
+class GenerateQuestionsView(TenantAPIView):
+    """Draft CBT questions from a lecturer's notes/topic via the AI provider.
+    Authorized managers only. Returns an un-saved preview — nothing is written to
+    the bank until the lecturer reviews/edits and posts them explicitly."""
+
+    permission_classes = [IsExamManager]
+
+    def post(self, request, pk):
+        bank = _get_bank(request.user, pk)
+        if not services.can_manage_bank(request.user, bank.course):
+            raise PermissionDenied("You are not permitted to manage this bank.")
+        serializer = GenerateQuestionsSerializer(data=request.data)
+        if not serializer.is_valid():
+            return error_response("Could not generate questions.", serializer.errors)
+        try:
+            drafts = ai.generate_draft_questions(
+                notes=serializer.validated_data["notes"],
+                count=serializer.validated_data["count"],
+                question_types=serializer.validated_data["question_types"],
+            )
+        except ai.AIProviderError as exc:
+            return error_response(str(exc), http_status=status.HTTP_502_BAD_GATEWAY)
+        return success_response(
+            {"bank": str(bank.id), "drafts": drafts},
+            "Draft questions generated. Review and edit each one before adding it to the bank.",
+        )
+
+
+class LinkCaItemView(TenantAPIView):
+    """Link a CBT exam to a Continuous Assessment item so graded attempts feed the
+    CA aggregation. Assigned lecturer / admins in scope only."""
+
+    permission_classes = [IsExamManager]
+
+    def post(self, request, pk):
+        exam = _get_exam_in_tenant(request.user, pk)
+        serializer = LinkCaItemSerializer(data=request.data)
+        if not serializer.is_valid():
+            return error_response("Could not link the CA item.", serializer.errors)
+        exam = ca.link_exam_to_ca_item(
+            actor=request.user, exam=exam, item=serializer.validated_data["item"]
+        )
+        return success_response(ExamSerializer(exam).data, "Exam linked to the CA item.")

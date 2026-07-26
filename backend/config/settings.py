@@ -186,6 +186,13 @@ CBT_FINALIZE_INTERVAL_SECONDS = config("CBT_FINALIZE_INTERVAL_SECONDS", default=
 # Proctoring webcam media limits. Snapshots are small images; short clips a few MB.
 CBT_WEBCAM_MAX_FILE_BYTES = config("CBT_WEBCAM_MAX_FILE_BYTES", default=8 * 1024 * 1024, cast=int)
 CBT_WEBCAM_ALLOWED_EXTENSIONS = (".jpg", ".jpeg", ".png", ".webp", ".webm", ".mp4")
+
+# AI question generation (Grok / xAI). Key comes from the environment, never code.
+GROK_API_KEY = config("GROK_API_KEY", default="")
+GROK_API_URL = config("GROK_API_URL", default="https://api.x.ai/v1/chat/completions")
+GROK_MODEL = config("GROK_MODEL", default="grok-4")
+GROK_TIMEOUT_SECONDS = config("GROK_TIMEOUT_SECONDS", default=30, cast=int)
+CBT_AI_MAX_QUESTIONS = config("CBT_AI_MAX_QUESTIONS", default=20, cast=int)
 CELERY_BEAT_SCHEDULE = {
     "cbt-finalize-expired-attempts": {
         "task": "cbt.tasks.finalize_expired_attempts_task",
