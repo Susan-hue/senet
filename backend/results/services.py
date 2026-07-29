@@ -254,7 +254,24 @@ def transition_result(*, actor, result_id, to_status, reason=""):
             after={"status": to_status.value},
             reason=reason,
         )
+        _notify_transition(result, to_status, reason)
     return result
+
+
+def _notify_transition(result, to_status, reason):
+    """Queue notifications for the transitions people need to hear about. Fan-out
+    runs on a worker after commit, so a rolled-back transition tells nobody and
+    the approving request never waits on a provider."""
+    from notifications import tasks as notification_tasks
+
+    if to_status == ResultStatus.RETURNED:
+        transaction.on_commit(
+            lambda: notification_tasks.notify_result_returned.delay(str(result.id), reason)
+        )
+    elif to_status == ResultStatus.RATIFIED_BY_SENATE:
+        transaction.on_commit(
+            lambda: notification_tasks.notify_result_published.delay(str(result.id))
+        )
 
 
 def submit_result(*, actor, result_id):

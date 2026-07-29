@@ -102,7 +102,6 @@ export function AdminLayout({
       <aside className={[styles.sidebar, navOpen ? styles.sidebarOpen : ""].join(" ")}>
         <div className={styles.brand}>
           <span className={styles.mark}>
-            <span className={styles.markGlow} aria-hidden="true" />
             <img src={logoUrl} alt="" width={34} height={39} />
           </span>
           <span className={styles.brandText}>

@@ -1,45 +1,55 @@
 :root {
   color-scheme: dark;
 
+  /* Near-black, flat. No brand gradient: depth comes from one-pixel borders
+     and small steps in surface lightness, not from colour washes. */
   --bg: #0a0a0a;
-  --bg-brand: linear-gradient(165deg, #0b0a0e 0%, #0a090d 50%, #090909 100%);
-  --surface: #0d0d0f;
-  --surface-2: #0f0f12;
-  --surface-hover: #15151a;
-  --surface-btn: #101012;
-  --border: rgba(255, 255, 255, 0.09);
-  --border-strong: rgba(124, 108, 246, 0.5);
+  --bg-brand: #0a0a0a;
+  --surface: #0e0e0e;
+  --surface-2: #121212;
+  --surface-hover: #171717;
+  --surface-btn: #121212;
+  --border: rgba(255, 255, 255, 0.08);
+  --border-hover: rgba(255, 255, 255, 0.14);
+  --border-strong: rgba(255, 255, 255, 0.2);
 
-  --text: #ececec;
-  --text-primary: #f4f4f8;
-  --text-muted: #8a8a92;
-  --text-label: #9a9aa2;
-  --text-faint: #62626f;
+  --text: #ededed;
+  --text-primary: #fafafa;
+  --text-muted: #8f8f8f;
+  --text-label: #a1a1a1;
+  --text-faint: #6b6b6b;
 
-  --accent: #6366f1;
-  --accent-solid: #6366f1;
-  --accent-hover: #6f72f3;
-  --accent-press: #5457e0;
-  --violet: #8b5cf6;
-  --accent-link: #a5a0ff;
-  --accent-eyebrow: #8c84f0;
-  --accent-lavender: #a78bfa;
-  --accent-grad: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
-  --accent-soft: rgba(99, 102, 241, 0.16);
+  /* One accent, used sparingly: links, focus rings, the odd status dot. The
+     primary button is near-white — the loudest thing on the page should be the
+     page's own contrast, not a colour. */
+  --accent: #7c7cf0;
+  --accent-solid: #7c7cf0;
+  --accent-hover: #8f8ff5;
+  --accent-press: #6a6ae0;
+  --violet: #7c7cf0;
+  --accent-link: #a3a3f5;
+  --accent-eyebrow: #8f8f9c;
+  --accent-lavender: #a3a3f5;
+  --accent-grad: #7c7cf0;
+  --accent-soft: rgba(124, 124, 240, 0.12);
+
+  --solid: #fafafa;
+  --solid-hover: #ffffff;
+  --solid-press: #e6e6e6;
+  --solid-text: #0a0a0a;
 
   --danger: #f1646c;
-  --danger-soft: rgba(241, 100, 108, 0.12);
+  --danger-soft: rgba(241, 100, 108, 0.1);
   --success: #3dd68c;
-  --success-soft: rgba(61, 214, 140, 0.12);
+  --success-soft: rgba(61, 214, 140, 0.1);
 
-  --radius: 14px;
-  --radius-md: 12px;
-  --radius-sm: 10px;
+  --radius: 12px;
+  --radius-md: 10px;
+  --radius-sm: 8px;
 
-  --shadow: 0 1px 2px rgba(0, 0, 0, 0.5), 0 18px 40px -16px rgba(0, 0, 0, 0.8);
-  --btn-shadow:
-    0 12px 30px -10px rgba(124, 108, 246, 0.8), 0 0 0 1px rgba(124, 108, 246, 0.4),
-    inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  /* Shadows read as depth, never as light. */
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px -12px rgba(0, 0, 0, 0.6);
+  --btn-shadow: none;
 
   --sans: "Geist", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --mono: "Geist Mono", ui-monospace, "SF Mono", Consolas, monospace;
@@ -118,53 +128,16 @@ select:focus-visible {
   }
 }
 
-@keyframes glowPulse {
-  0%,
-  100% {
-    opacity: 0.5;
+/* The former glow/orb/pulse keyframes are gone with the effects that used them.
+   Motion that remains is opacity and small transforms only. */
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
   }
-  50% {
+  to {
     opacity: 1;
-  }
-}
-
-@keyframes markGlow {
-  0%,
-  100% {
-    filter: drop-shadow(0 0 6px rgba(124, 108, 246, 0.5));
-  }
-  50% {
-    filter: drop-shadow(0 0 14px rgba(124, 108, 246, 0.9));
-  }
-}
-
-@keyframes orbA {
-  0%,
-  100% {
-    transform: translate(0, 0) scale(1);
-  }
-  50% {
-    transform: translate(30px, 38px) scale(1.1);
-  }
-}
-
-@keyframes orbB {
-  0%,
-  100% {
-    transform: translate(0, 0) scale(1);
-  }
-  50% {
-    transform: translate(-40px, -30px) scale(1.12);
-  }
-}
-
-@keyframes pulseRing {
-  0% {
-    box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.45);
-  }
-  70%,
-  100% {
-    box-shadow: 0 0 0 16px rgba(99, 102, 241, 0);
+    transform: none;
   }
 }
 

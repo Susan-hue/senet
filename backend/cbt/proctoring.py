@@ -100,7 +100,7 @@ def evaluate_attempt_for_cheating(attempt):
         },
     )
     if created:
-        from cbt.tasks import notify_cheating_flag
+        from notifications.tasks import notify_cheating_flag
 
         notify_cheating_flag.delay(str(flag.id))
     elif flag.status == CheatingFlagStatus.RAISED:
@@ -212,7 +212,7 @@ def escalate_flag(*, actor, flag, notes=""):
             "updated_at",
         ]
     )
-    from cbt.tasks import notify_flag_escalation
+    from notifications.tasks import notify_flag_escalation
 
     notify_flag_escalation.delay(str(flag.id))
     return flag
@@ -224,27 +224,8 @@ def _find_hod(course):
     ).first()
 
 
-# --------------------------------------------------------------------------- #
-# Notification recipients                                                      #
-# --------------------------------------------------------------------------- #
-
-
-def flag_notification_recipients(flag):
-    """Lecturer(s) assigned to the exam's course-term + the exam's creator + every
-    exam officer in the tenant. Deduplicated, sorted email list."""
-    exam = flag.attempt.exam
-    emails = set()
-    for assignment in CourseAssignment.all_objects.filter(
-        course_id=exam.course_id, session_id=exam.session_id, semester_id=exam.semester_id
-    ).select_related("lecturer"):
-        if assignment.lecturer.email:
-            emails.add(assignment.lecturer.email)
-    if exam.created_by_id and exam.created_by.email:
-        emails.add(exam.created_by.email)
-    for officer in User.objects.filter(institution_id=exam.institution_id, role=Role.EXAM_OFFICER):
-        if officer.email:
-            emails.add(officer.email)
-    return sorted(emails)
+# Who is told about a flag now lives with the rest of the messaging, in
+# ``notifications.tasks._flag_reviewers``.
 
 
 # --------------------------------------------------------------------------- #

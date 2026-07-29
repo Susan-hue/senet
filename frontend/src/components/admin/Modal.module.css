@@ -30,10 +30,7 @@
   background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  box-shadow:
-    var(--shadow),
-    0 0 0 1px rgba(124, 108, 246, 0.08),
-    0 40px 80px -30px rgba(99, 102, 241, 0.35);
+  box-shadow: var(--shadow);
   animation: pop 0.16s ease;
 }
 

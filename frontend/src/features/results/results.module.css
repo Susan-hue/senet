@@ -138,7 +138,7 @@
 }
 
 .dirtyRow td {
-  background: rgba(99, 102, 241, 0.05);
+  background: var(--accent-soft);
 }
 
 .dirtyRow td:first-child {

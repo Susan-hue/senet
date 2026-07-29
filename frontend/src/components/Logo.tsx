@@ -5,7 +5,6 @@ export function Logo({ compact = false }: { compact?: boolean }) {
   return (
     <span className={styles.logo}>
       <span className={[styles.mark, compact ? styles.markCompact : ""].filter(Boolean).join(" ")}>
-        <span className={styles.glow} aria-hidden="true" />
         <img
           className={styles.img}
           src={logoUrl}

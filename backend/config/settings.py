@@ -38,6 +38,7 @@ INSTALLED_APPS = [
     "grading",
     "auditor",
     "cbt",
+    "notifications",
 ]
 
 MIDDLEWARE = [
@@ -123,6 +124,11 @@ REST_FRAMEWORK = {
     ),
     "DEFAULT_PERMISSION_CLASSES": ("rest_framework.permissions.IsAuthenticated",),
     "EXCEPTION_HANDLER": "accounts.responses.envelope_exception_handler",
+    "DEFAULT_THROTTLE_CLASSES": (),
+    "DEFAULT_THROTTLE_RATES": {
+        # Registering a phone for the SMS result check sends a real OTP text.
+        "result_check_otp": config("RESULT_CHECK_OTP_RATE", default="5/hour"),
+    },
 }
 
 SIMPLE_JWT = {
@@ -193,10 +199,87 @@ GROK_API_URL = config("GROK_API_URL", default="https://api.x.ai/v1/chat/completi
 GROK_MODEL = config("GROK_MODEL", default="grok-4")
 GROK_TIMEOUT_SECONDS = config("GROK_TIMEOUT_SECONDS", default=30, cast=int)
 CBT_AI_MAX_QUESTIONS = config("CBT_AI_MAX_QUESTIONS", default=20, cast=int)
+# --------------------------------------------------------------------------- #
+# Notifications (email / SMS / WhatsApp) + SMS-USSD result check               #
+# --------------------------------------------------------------------------- #
+
+# Termii is the Nigeria-native SMS/WhatsApp provider. Every credential is read
+# from the environment; nothing here is ever a literal.
+TERMII_API_KEY = config("TERMII_API_KEY", default="")
+TERMII_BASE_URL = config("TERMII_BASE_URL", default="https://api.ng.termii.com")
+TERMII_SENDER_ID = config("TERMII_SENDER_ID", default="Senet")
+TERMII_WHATSAPP_SENDER_ID = config("TERMII_WHATSAPP_SENDER_ID", default=TERMII_SENDER_ID)
+TERMII_TIMEOUT_SECONDS = config("TERMII_TIMEOUT_SECONDS", default=15, cast=int)
+
+# Shared secret Termii signs inbound SMS/USSD webhooks with. Deliberately has no
+# default: with no secret configured the inbound endpoints reject everything
+# rather than trusting an unauthenticated caller.
+TERMII_INBOUND_SECRET = config("TERMII_INBOUND_SECRET", default="")
+
+# Without a Termii key (local dev, CI) sending falls back to the console provider
+# so nothing silently tries to reach the real network.
+_DEFAULT_TEXT_PROVIDER = (
+    "notifications.providers.TermiiProvider"
+    if TERMII_API_KEY
+    else "notifications.providers.ConsoleProvider"
+)
+NOTIFICATION_PROVIDERS = {
+    "email": config(
+        "NOTIFICATIONS_EMAIL_PROVIDER", default="notifications.providers.DjangoEmailProvider"
+    ),
+    "sms": config("NOTIFICATIONS_SMS_PROVIDER", default=_DEFAULT_TEXT_PROVIDER),
+    "whatsapp": config("NOTIFICATIONS_WHATSAPP_PROVIDER", default=_DEFAULT_TEXT_PROVIDER),
+}
+NOTIFICATIONS_WHATSAPP_ENABLED = config("NOTIFICATIONS_WHATSAPP_ENABLED", default=False, cast=bool)
+NOTIFICATION_MAX_RETRIES = config("NOTIFICATION_MAX_RETRIES", default=3, cast=int)
+NOTIFICATION_RETRY_BACKOFF_SECONDS = config(
+    "NOTIFICATION_RETRY_BACKOFF_SECONDS", default=30, cast=int
+)
+
+# Default country for normalising locally-dialled Nigerian numbers to E.164.
+SMS_DEFAULT_COUNTRY_CODE = config("SMS_DEFAULT_COUNTRY_CODE", default="234")
+
+# SMS/USSD result check. Results day is a whole campus checking at once, so the
+# lookup is cached and rate-limited per phone number rather than per source IP
+# (every request arrives from the provider's gateway).
+RESULT_CHECK_CACHE_SECONDS = config("RESULT_CHECK_CACHE_SECONDS", default=300, cast=int)
+RESULT_CHECK_RATE_LIMIT = config("RESULT_CHECK_RATE_LIMIT", default=5, cast=int)
+RESULT_CHECK_RATE_WINDOW_SECONDS = config("RESULT_CHECK_RATE_WINDOW_SECONDS", default=60, cast=int)
+RESULT_CHECK_MAX_FAILURES = config("RESULT_CHECK_MAX_FAILURES", default=5, cast=int)
+RESULT_CHECK_LOCKOUT_SECONDS = config("RESULT_CHECK_LOCKOUT_SECONDS", default=900, cast=int)
+RESULT_CHECK_PIN_MIN_LENGTH = config("RESULT_CHECK_PIN_MIN_LENGTH", default=4, cast=int)
+RESULT_CHECK_PIN_MAX_LENGTH = config("RESULT_CHECK_PIN_MAX_LENGTH", default=6, cast=int)
+RESULT_CHECK_OTP_TTL_SECONDS = config("RESULT_CHECK_OTP_TTL_SECONDS", default=600, cast=int)
+USSD_SESSION_TTL_SECONDS = config("USSD_SESSION_TTL_SECONDS", default=180, cast=int)
+
+# How often beat looks for exams that have just opened so their students are
+# notified once. Dedupe is by notification key, so overlapping runs are safe.
+EXAM_OPEN_SWEEP_INTERVAL_SECONDS = config("EXAM_OPEN_SWEEP_INTERVAL_SECONDS", default=300, cast=int)
+
+CACHE_URL = config("CACHE_URL", default="")
+if CACHE_URL:
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.redis.RedisCache",
+            "LOCATION": CACHE_URL,
+        }
+    }
+else:
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+            "LOCATION": "senet-default",
+        }
+    }
+
 CELERY_BEAT_SCHEDULE = {
     "cbt-finalize-expired-attempts": {
         "task": "cbt.tasks.finalize_expired_attempts_task",
         "schedule": float(CBT_FINALIZE_INTERVAL_SECONDS),
+    },
+    "notifications-sweep-opened-exams": {
+        "task": "notifications.tasks.notify_opened_exams",
+        "schedule": float(EXAM_OPEN_SWEEP_INTERVAL_SECONDS),
     },
 }
 

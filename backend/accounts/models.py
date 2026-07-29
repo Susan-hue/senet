@@ -80,6 +80,10 @@ class User(AbstractBaseUser, PermissionsMixin):
         blank=True,
     )
     identifier = models.CharField(max_length=50, blank=True, default="")
+    # Contact number for SMS/WhatsApp notifications. Students who want the
+    # SMS/USSD result check register a phone separately, and that binding is
+    # verified by one-time code (see notifications.ResultCheckRegistration).
+    phone_number = models.CharField(max_length=20, blank=True, default="")
 
     rank = models.CharField(max_length=100, blank=True, default="")
     current_level = models.PositiveSmallIntegerField(choices=Level.choices, null=True, blank=True)

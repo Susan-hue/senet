@@ -19,16 +19,20 @@ def _round(value):
     return value.quantize(TWO_DP, rounding=ROUND_HALF_UP)
 
 
-def official_rows(student):
+def official_rows(student, status=None):
     """The student's official transcript rows: current score rows whose result
-    sheet is in the institution's configured GPA source state."""
+    sheet is in the institution's configured GPA source state.
+
+    ``status`` overrides that configured state with an explicit one. Callers on
+    channels that must never depend on tenant configuration — the SMS/USSD result
+    check — pass the ratified state directly rather than trusting config."""
     institution = student.institution
     return (
         StudentScore.all_objects.filter(
             institution=institution,
             student=student,
             is_current=True,
-            result__status=institution.gpa_source_status,
+            result__status=status or institution.gpa_source_status,
         )
         .select_related("result__course", "result__session", "result__semester")
         .order_by("result__session__start_date", "result__semester__start_date", "created_at")
@@ -66,9 +70,13 @@ def _gpa(quality_points, credit_units):
     return _round(quality_points / Decimal(credit_units))
 
 
-def term_summary(student, session, semester):
+def term_summary(student, session, semester, status=None):
     institution = student.institution
-    rows = list(official_rows(student).filter(result__session=session, result__semester=semester))
+    rows = list(
+        official_rows(student, status=status).filter(
+            result__session=session, result__semester=semester
+        )
+    )
     quality_points, credit_units = _totals(rows, institution)
     return {
         "session": str(session.id),
@@ -109,9 +117,9 @@ def outstanding_carryovers(student):
     return outstanding
 
 
-def cumulative_summary(student):
+def cumulative_summary(student, status=None):
     institution = student.institution
-    rows = list(official_rows(student))
+    rows = list(official_rows(student, status=status))
     method = institution.carryover_cgpa_method
 
     if method == HIGHEST_ONLY:

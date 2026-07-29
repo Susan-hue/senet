@@ -17,8 +17,6 @@ export function AuthLayout({ title, subtitle, children, footer }: AuthLayoutProp
   return (
     <div className={styles.page}>
       <aside className={styles.brandDesktop}>
-        <div className={styles.orbA} aria-hidden="true" />
-        <div className={styles.orbB} aria-hidden="true" />
         <div className={styles.grid} aria-hidden="true" />
         <div className={styles.isoWrap} aria-hidden="true">
           <IsometricStack variant="desktop" />
@@ -37,27 +35,12 @@ export function AuthLayout({ title, subtitle, children, footer }: AuthLayoutProp
               approvals and academic records, unified for African institutions.
             </p>
             <div className={styles.pills}>
-              <span className={styles.pill}>
-                <span
-                  className={styles.dot}
-                  style={{ background: "#6366F1", boxShadow: "0 0 8px #6366F1" }}
-                />
-                CBT exams
-              </span>
-              <span className={styles.pill}>
-                <span
-                  className={styles.dot}
-                  style={{ background: "#8B5CF6", boxShadow: "0 0 8px #8B5CF6" }}
-                />
-                Results
-              </span>
-              <span className={styles.pill}>
-                <span
-                  className={styles.dot}
-                  style={{ background: "#A78BFA", boxShadow: "0 0 8px #A78BFA" }}
-                />
-                Records
-              </span>
+              {["CBT exams", "Results", "Records"].map((label) => (
+                <span className={styles.pill} key={label}>
+                  <span className={styles.dot} aria-hidden="true" />
+                  {label}
+                </span>
+              ))}
             </div>
           </div>
           <div className={styles.trusted}>
@@ -68,7 +51,6 @@ export function AuthLayout({ title, subtitle, children, footer }: AuthLayoutProp
       </aside>
 
       <div className={styles.brandMobile}>
-        <div className={styles.mobileGlow} aria-hidden="true" />
         <div className={styles.mobileTop}>
           <Logo compact />
         </div>
@@ -82,7 +64,6 @@ export function AuthLayout({ title, subtitle, children, footer }: AuthLayoutProp
       </div>
 
       <main className={styles.formPanel}>
-        <div className={styles.formGlow} aria-hidden="true" />
         <div className={styles.formInner}>
           {title ? (
             <header className={styles.headerBlock}>
