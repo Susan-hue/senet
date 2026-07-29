@@ -218,12 +218,20 @@ class CheatingFlagTests(ProctorTestBase):
         self.assertEqual(CheatingFlag.all_objects.filter(attempt=self.attempt).count(), 1)
 
     def test_notifies_lecturer_and_exam_officer_once(self):
+        """Flag notifications now go through the notifications app: one logged
+        message per recipient, deduplicated so a second tripped threshold on the
+        same flag notifies nobody again."""
         mail.outbox = []
-        self.trip_flag()
-        self.assertEqual(len(mail.outbox), 1)
-        recipients = set(mail.outbox[0].to)
+        with self.captureOnCommitCallbacks(execute=True):
+            self.trip_flag()
+        recipients = {address for message in mail.outbox for address in message.to}
         self.assertIn(self.lecturer.email, recipients)
         self.assertIn(self.exam_officer.email, recipients)
+
+        sent = len(mail.outbox)
+        with self.captureOnCommitCallbacks(execute=True):
+            self.trip_flag()
+        self.assertEqual(len(mail.outbox), sent)
 
     def test_webcam_anomaly_can_raise_a_flag(self):
         with override_settings(MEDIA_ROOT=TMP_MEDIA):
@@ -259,9 +267,10 @@ class ReviewFlowTests(ProctorTestBase):
         flag = self._flag()
         mail.outbox = []
         self.client.force_authenticate(self.lecturer)
-        response = self.client.post(
-            reverse("cbt-flag-escalate", args=[flag.id]), {"notes": "Please review."}
-        )
+        with self.captureOnCommitCallbacks(execute=True):
+            response = self.client.post(
+                reverse("cbt-flag-escalate", args=[flag.id]), {"notes": "Please review."}
+            )
         self.assertEqual(response.status_code, 200)
         flag.refresh_from_db()
         self.assertEqual(flag.status, CheatingFlagStatus.ESCALATED)

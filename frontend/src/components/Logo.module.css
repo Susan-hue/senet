@@ -9,21 +9,12 @@
   display: inline-flex;
   width: 40px;
   height: 46px;
-  animation: markGlow 3.4s ease-in-out infinite;
 }
 
 .markCompact {
   width: 34px;
   height: 39px;
   gap: 13px;
-}
-
-.glow {
-  position: absolute;
-  inset: -8px;
-  background: radial-gradient(circle, rgba(124, 108, 246, 0.45), transparent 70%);
-  filter: blur(8px);
-  pointer-events: none;
 }
 
 .img {

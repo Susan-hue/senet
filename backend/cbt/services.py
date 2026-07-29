@@ -260,6 +260,11 @@ def create_exam(
                 )
             }
         )
+
+    # Tell the enrolled students, on a worker, after commit.
+    from notifications.tasks import notify_exam_scheduled
+
+    transaction.on_commit(lambda: notify_exam_scheduled.delay(str(exam.id)))
     return exam
 
 

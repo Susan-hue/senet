@@ -13,45 +13,18 @@
   min-width: 440px;
   overflow: hidden;
   background: var(--bg-brand);
-  border-right: 1px solid rgba(124, 108, 246, 0.12);
-}
-
-.orbA,
-.orbB {
-  position: absolute;
-  border-radius: 50%;
-  pointer-events: none;
-}
-
-.orbA {
-  top: 6%;
-  left: 12%;
-  width: 480px;
-  height: 480px;
-  background: radial-gradient(circle, rgba(99, 102, 241, 0.4) 0%, rgba(99, 102, 241, 0) 68%);
-  filter: blur(70px);
-  animation: orbA 17s ease-in-out infinite;
-}
-
-.orbB {
-  bottom: -12%;
-  right: -6%;
-  width: 420px;
-  height: 420px;
-  background: radial-gradient(circle, rgba(139, 92, 246, 0.38) 0%, rgba(139, 92, 246, 0) 70%);
-  filter: blur(76px);
-  animation: orbB 21s ease-in-out infinite;
+  border-right: 1px solid var(--border);
 }
 
 .grid {
   position: absolute;
   inset: 0;
   background-image:
-    linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
-  background-size: 48px 48px;
-  -webkit-mask: radial-gradient(130% 100% at 30% 40%, #000 25%, transparent 80%);
-  mask: radial-gradient(130% 100% at 30% 40%, #000 25%, transparent 80%);
+    linear-gradient(rgba(255, 255, 255, 0.022) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.022) 1px, transparent 1px);
+  background-size: 56px 56px;
+  -webkit-mask: radial-gradient(120% 90% at 30% 40%, #000 20%, transparent 78%);
+  mask: radial-gradient(120% 90% at 30% 40%, #000 20%, transparent 78%);
   pointer-events: none;
 }
 
@@ -127,18 +100,19 @@
   gap: 7px;
   padding: 7px 13px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(124, 108, 246, 0.18);
+  background: var(--surface);
+  border: 1px solid var(--border);
   font-size: 12.5px;
-  color: #c4c4d2;
+  color: var(--text-label);
   white-space: nowrap;
   flex-shrink: 0;
 }
 
 .dot {
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
   border-radius: 50%;
+  background: var(--text-faint);
   flex-shrink: 0;
 }
 
@@ -155,7 +129,6 @@
   height: 7px;
   border-radius: 50%;
   background: var(--success);
-  box-shadow: 0 0 8px var(--success);
 }
 
 /* ===== Brand header (mobile) ===== */
@@ -164,20 +137,8 @@
   position: relative;
   overflow: hidden;
   padding: 26px 22px;
-  background: linear-gradient(180deg, #0b0a0e 0%, #0a090d 100%);
-  border-bottom: 1px solid rgba(124, 108, 246, 0.16);
-}
-
-.mobileGlow {
-  position: absolute;
-  top: -50px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 360px;
-  height: 320px;
-  background: radial-gradient(circle, rgba(99, 102, 241, 0.3) 0%, rgba(99, 102, 241, 0) 68%);
-  filter: blur(44px);
-  pointer-events: none;
+  background: var(--bg-brand);
+  border-bottom: 1px solid var(--border);
 }
 
 .mobileTop {
@@ -216,17 +177,6 @@
   padding: 40px 32px 92px;
   background: var(--bg);
   overflow-y: auto;
-}
-
-.formGlow {
-  position: absolute;
-  top: -160px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 560px;
-  height: 340px;
-  background: radial-gradient(circle, rgba(99, 102, 241, 0.12) 0%, rgba(99, 102, 241, 0) 70%);
-  pointer-events: none;
 }
 
 .formInner {

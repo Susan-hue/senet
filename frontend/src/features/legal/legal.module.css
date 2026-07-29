@@ -1,0 +1,150 @@
+.page {
+  background: var(--bg);
+}
+
+.inner {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 40px 18px 88px;
+}
+
+/* Draft banner — deliberately the first thing on the page and hard to skim
+   past, so neither document is mistaken for a settled legal agreement. */
+.draft {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  padding: 16px 18px;
+  border: 1px solid var(--border-hover);
+  border-left: 2px solid var(--accent);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+
+.draftTag {
+  flex-shrink: 0;
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--border-hover);
+  background: var(--surface-hover);
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-primary);
+}
+
+.draftText {
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--text-muted);
+}
+
+.header {
+  margin-top: 48px;
+  padding-bottom: 28px;
+  border-bottom: 1px solid var(--border);
+}
+
+.title {
+  font-size: 34px;
+  line-height: 1.12;
+  letter-spacing: -0.028em;
+  color: var(--text-primary);
+}
+
+.meta {
+  margin-top: 12px;
+  font-size: 13px;
+  color: var(--text-faint);
+}
+
+.intro {
+  margin-top: 28px;
+  font-size: 15.5px;
+  line-height: 1.7;
+  color: var(--text-muted);
+}
+
+.section {
+  margin-top: 44px;
+  scroll-margin-top: 84px;
+}
+
+.heading {
+  font-size: 18px;
+  letter-spacing: -0.018em;
+  color: var(--text-primary);
+}
+
+.number {
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.body {
+  margin-top: 14px;
+  font-size: 14.5px;
+  line-height: 1.72;
+  color: var(--text-muted);
+}
+
+.body p + p,
+.body p + ul,
+.body ul + p,
+.body p + table {
+  margin-top: 14px;
+}
+
+.body strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.body ul {
+  margin: 0;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.body a {
+  color: var(--accent-link);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* Tables scroll on their own so the page body never does. */
+.table {
+  display: block;
+  width: 100%;
+  overflow-x: auto;
+  border-collapse: collapse;
+  font-size: 13.5px;
+}
+
+.table th,
+.table td {
+  padding: 11px 14px;
+  text-align: left;
+  vertical-align: top;
+  border: 1px solid var(--border);
+}
+
+.table th {
+  background: var(--surface);
+  color: var(--text-label);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+@media (min-width: 640px) {
+  .inner {
+    padding: 56px 24px 104px;
+  }
+  .title {
+    font-size: 42px;
+  }
+}

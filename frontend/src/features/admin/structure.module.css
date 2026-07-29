@@ -144,9 +144,9 @@
 
 .degreeTag {
   font-size: 0.72rem;
-  color: var(--accent-lavender);
+  color: var(--accent-link);
   background: var(--accent-soft);
-  border: 1px solid rgba(124, 108, 246, 0.28);
+  border: 1px solid var(--border-hover);
   padding: 1px 7px;
   border-radius: 999px;
 }

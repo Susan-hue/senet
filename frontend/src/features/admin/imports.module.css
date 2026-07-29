@@ -22,9 +22,8 @@
 
 .typeCardActive,
 .typeCardActive:hover {
-  border-color: rgba(124, 108, 246, 0.6);
-  background: var(--accent-soft);
-  box-shadow: 0 0 0 1px rgba(124, 108, 246, 0.35);
+  border-color: var(--border-strong);
+  background: var(--surface-hover);
 }
 
 .typeTitle {
@@ -56,8 +55,8 @@
 
 .dropzone:hover,
 .dropzoneOver {
-  border-color: rgba(124, 108, 246, 0.6);
-  background: linear-gradient(180deg, rgba(99, 102, 241, 0.06), transparent);
+  border-color: var(--border-hover);
+  background: var(--surface-hover);
 }
 
 .dropIcon {
@@ -67,10 +66,10 @@
   width: 56px;
   height: 56px;
   border-radius: 15px;
-  background: var(--accent-grad);
-  color: #fff;
+  background: var(--surface-hover);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
   margin-bottom: 6px;
-  box-shadow: 0 12px 30px -10px rgba(124, 108, 246, 0.8);
 }
 
 .dropzoneOver .dropIcon {
@@ -138,16 +137,14 @@
   inset: 0;
   width: 40%;
   border-radius: 999px;
-  background: var(--accent-grad);
-  box-shadow: 0 0 14px 1px rgba(99, 102, 241, 0.7);
+  background: var(--accent);
   animation: slide 1.2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
 }
 
 .determinate {
   height: 100%;
   border-radius: 999px;
-  background: var(--accent-grad);
-  box-shadow: 0 0 14px 1px rgba(99, 102, 241, 0.7);
+  background: var(--accent);
   transition: width 0.4s ease;
 }
 

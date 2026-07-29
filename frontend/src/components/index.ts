@@ -8,4 +8,6 @@ export { Spinner } from "./Spinner";
 export { Logo } from "./Logo";
 export { IsometricStack } from "./IsometricStack";
 export { AuthLayout } from "./AuthLayout";
+export { PublicLayout } from "./PublicLayout";
+export { SiteFooter } from "./SiteFooter";
 export { FullPageLoader } from "./FullPageLoader";

@@ -44,8 +44,7 @@
 }
 
 .chipActive {
-  color: #fff;
-  background: rgba(99, 102, 241, 0.16);
-  border-color: rgba(124, 108, 246, 0.6);
-  box-shadow: 0 0 16px rgba(99, 102, 241, 0.2);
+  color: var(--text-primary);
+  background: var(--surface-hover);
+  border-color: var(--border-strong);
 }

@@ -19,14 +19,14 @@
 
 .accent {
   background: var(--accent-soft);
-  border-color: rgba(124, 108, 246, 0.35);
-  color: var(--accent-lavender);
+  border-color: var(--border-hover);
+  color: var(--accent-link);
 }
 
 .violet {
-  background: rgba(139, 92, 246, 0.12);
-  border-color: rgba(139, 92, 246, 0.32);
-  color: #c4b5fd;
+  background: var(--surface-hover);
+  border-color: var(--border-hover);
+  color: var(--text-label);
 }
 
 .success {

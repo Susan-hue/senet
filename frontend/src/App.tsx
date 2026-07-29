@@ -9,6 +9,8 @@ import { AwardIcon, BookIcon, ClipboardIcon } from "./features/admin/adminIcons"
 import { MyCoursesPage, ScoreSheetPage } from "./features/results";
 import { AssessmentsPage, GradeItemPage } from "./features/assessments";
 import { MyResultsPage } from "./features/student";
+import { LandingPage } from "./features/landing";
+import { PrivacyPage, TermsPage } from "./features/legal";
 import {
   ForgotPasswordPage,
   LoginPage,
@@ -63,15 +65,21 @@ const STUDENT_NAV = [{ to: "/me/results", label: "My Results", Icon: AwardIcon }
 function GuestRoute({ children }: { children: ReactElement }) {
   const { status } = useAuth();
   if (status === "loading") return <FullPageLoader />;
-  if (status === "authenticated") return <Navigate to="/" replace />;
+  if (status === "authenticated") return <Navigate to="/app" replace />;
   return children;
 }
 
 function AppRoutes() {
   return (
     <Routes>
+      {/* Public front door. "/app" is the signed-in entry point that sends each
+          role to its own workspace. */}
+      <Route path="/" element={<LandingPage />} />
+      <Route path="/privacy" element={<PrivacyPage />} />
+      <Route path="/terms" element={<TermsPage />} />
+
       <Route
-        path="/"
+        path="/app"
         element={
           <ProtectedRoute>
             <RoleHome />

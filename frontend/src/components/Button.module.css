@@ -30,19 +30,16 @@
 }
 
 .primary {
-  color: #fff;
-  background: var(--accent-grad);
-  box-shadow: var(--btn-shadow);
+  color: var(--solid-text);
+  background: var(--solid);
 }
 
 .primary:hover:not(:disabled) {
-  filter: brightness(1.1);
-  transform: translateY(-1px);
+  background: var(--solid-hover);
 }
 
 .primary:active:not(:disabled) {
-  transform: translateY(0);
-  filter: brightness(0.98);
+  background: var(--solid-press);
 }
 
 .ghost {
@@ -54,5 +51,5 @@
 .ghost:hover:not(:disabled) {
   color: var(--text);
   background: var(--surface-hover);
-  border-color: var(--border-strong);
+  border-color: var(--border-hover);
 }
