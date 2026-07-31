@@ -1,19 +1,22 @@
 import { useState } from "react";
 import type { FormEvent } from "react";
-import { Link, useNavigate } from "react-router-dom";
-import { Alert, AuthLayout, Button, Field, RoleChips } from "../../components";
+import { Link } from "react-router-dom";
+import { Alert, AuthLayout, Button, Field } from "../../components";
 import { register } from "../../services/auth";
 import { ApiError } from "../../services/api";
-import { ROLE_OPTIONS } from "../../types";
-import type { Role } from "../../types";
+import { VerificationSent } from "./VerificationSent";
 import styles from "./auth.module.css";
 
+/**
+ * Public sign-up — students only. Lecturers, HODs, deans, exam officers,
+ * advisers and admins are provisioned by their institution's administrator,
+ * because a role that carries authority over other people's results cannot be
+ * self-asserted. There is no role selector here and the API rejects one.
+ */
 export function RegisterPage() {
-  const navigate = useNavigate();
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [role, setRole] = useState<Role>("student");
   const [loading, setLoading] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({});
@@ -28,7 +31,7 @@ export function RegisterPage() {
     setFieldErrors({});
     try {
       const trimmedEmail = email.trim();
-      await register({ email: trimmedEmail, full_name: fullName.trim(), password, role });
+      await register({ email: trimmedEmail, full_name: fullName.trim(), password });
       setSubmittedEmail(trimmedEmail);
     } catch (error) {
       if (error instanceof ApiError) {
@@ -42,25 +45,11 @@ export function RegisterPage() {
     }
   }
 
-  if (submittedEmail) {
-    return (
-      <AuthLayout title="Check your inbox" subtitle="One more step to activate your account.">
-        <div className={styles.center}>
-          <Alert variant="success">
-            We sent a verification link to <strong>{submittedEmail}</strong>. Open it to verify your
-            email, then sign in.
-          </Alert>
-          <Button fullWidth onClick={() => navigate("/login")}>
-            Go to sign in
-          </Button>
-        </div>
-      </AuthLayout>
-    );
-  }
+  if (submittedEmail) return <VerificationSent email={submittedEmail} />;
 
   return (
     <AuthLayout
-      title="Create your account"
+      title="Create your student account"
       subtitle="Join your university's Senet workspace in minutes."
       footer={
         <>
@@ -90,13 +79,6 @@ export function RegisterPage() {
           required
           error={fieldError("email")}
         />
-        <RoleChips
-          label="I am a"
-          value={role}
-          onChange={(value) => setRole(value as Role)}
-          options={ROLE_OPTIONS}
-          required
-        />
         <Field
           label="Password"
           type="password"
@@ -111,6 +93,10 @@ export function RegisterPage() {
         <Button type="submit" fullWidth loading={loading}>
           Create account
         </Button>
+        <p className={styles.staffNote}>
+          Teaching or administrative staff? Your institution creates your account — ask your
+          department or school administrator rather than signing up here.
+        </p>
         <p className={styles.finePrint}>
           By continuing you agree to Senet's <span className={styles.term}>Terms</span> and{" "}
           <span className={styles.term}>Privacy Policy</span>.

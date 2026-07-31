@@ -3,6 +3,7 @@ import uuid
 from django.conf import settings
 from django.contrib.auth import authenticate, get_user_model
 from django.core import signing
+from django.core.cache import cache
 from django.db.models import Exists, OuterRef, ProtectedError, Q
 from rest_framework import generics, status
 from rest_framework.permissions import SAFE_METHODS, AllowAny, IsAuthenticated
@@ -54,6 +55,7 @@ from accounts.serializers import (
     PasswordResetRequestSerializer,
     ProgrammeSerializer,
     RegisterSerializer,
+    ResendVerificationSerializer,
     SemesterSerializer,
     SessionSerializer,
     UserAdminSerializer,
@@ -124,6 +126,59 @@ class VerifyEmailView(APIView):
             user.is_verified = True
             user.save(update_fields=["is_verified", "updated_at"])
         return success_response(message="Email verified. You can now log in.")
+
+
+def _resend_within_rate_limit(email):
+    """Per-address sliding counter over the resend window.
+
+    Keyed on the address rather than the IP: a university NATs its whole campus
+    behind one address, so an IP counter would lock out everybody the moment one
+    student retried. Counting the address throttles exactly the account being
+    targeted.
+    """
+    key = f"accounts:verify-resend:{email.lower()}"
+    window = settings.VERIFICATION_RESEND_WINDOW_SECONDS
+    cache.get_or_set(key, 0, window)
+    try:
+        count = cache.incr(key)
+    except ValueError:
+        # The window lapsed between the two calls; this request opens a new one.
+        cache.set(key, 1, window)
+        count = 1
+    return count <= settings.VERIFICATION_RESEND_LIMIT
+
+
+class ResendVerificationView(APIView):
+    """Send a fresh verification link for an account that has not verified yet.
+
+    The response never says whether the address exists or is already verified —
+    that would turn this into an account-enumeration oracle for an endpoint that
+    needs no authentication. Only the rate limit is reported back, because the
+    caller has to know to stop.
+    """
+
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        serializer = ResendVerificationSerializer(data=request.data)
+        if not serializer.is_valid():
+            return error_response("Enter a valid email address.", serializer.errors)
+
+        email = serializer.validated_data["email"]
+        if not _resend_within_rate_limit(email):
+            return error_response(
+                "Too many requests. Wait a few minutes before asking for another email.",
+                http_status=status.HTTP_429_TOO_MANY_REQUESTS,
+            )
+
+        user = User.objects.filter(email__iexact=email, is_verified=False).first()
+        if user is not None:
+            token = tokens.make_email_verification_token(user)
+            send_verification_email.delay(user.email, token)
+
+        return success_response(
+            message="If that account still needs verifying, a new link is on its way."
+        )
 
 
 class LoginView(APIView):

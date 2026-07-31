@@ -1,7 +1,6 @@
 export { Button } from "./Button";
 export { Field } from "./Field";
 export { SelectField } from "./SelectField";
-export { RoleChips } from "./RoleChips";
 export { StrengthMeter } from "./StrengthMeter";
 export { Alert } from "./Alert";
 export { Spinner } from "./Spinner";

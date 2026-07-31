@@ -1,6 +1,8 @@
+import uuid
 from decimal import Decimal
 
 from django.db import IntegrityError, transaction
+from django.db.models import Q
 from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
 
 from accounts.models import Enrolment, Role
@@ -322,6 +324,43 @@ def pending_results_for(user):
     return visible_results(user).filter(status=stage)
 
 
+# Query parameter -> ORM lookup for narrowing an approval worklist. Boards
+# always drill (faculty -> department -> term) rather than listing everything,
+# so these run on top of the already role-scoped queryset.
+RESULT_FILTERS = {
+    "faculty": "course__department__faculty_id",
+    "department": "course__department_id",
+    "session": "session_id",
+    "semester": "semester_id",
+    "course": "course_id",
+}
+
+
+def filter_results(qs, params):
+    """Narrow a result queryset by the scope parameters a board drilled into.
+
+    An unparseable id yields no rows rather than being ignored, so a bad filter
+    can never widen what the caller sees."""
+    for param, lookup in RESULT_FILTERS.items():
+        value = params.get(param)
+        if not value:
+            continue
+        try:
+            uuid.UUID(str(value))
+        except ValueError:
+            return qs.none()
+        qs = qs.filter(**{lookup: value})
+
+    search = (params.get("search") or "").strip()
+    if search:
+        qs = qs.filter(
+            Q(course__code__icontains=search)
+            | Q(course__title__icontains=search)
+            | Q(lecturer__full_name__icontains=search)
+        )
+    return qs
+
+
 def approve_result(*, actor, result_id):
     """Advance a sheet one stage for the actor's role, through the guarded
     transition service (which enforces the exact from-state, role and scope)."""
@@ -471,6 +510,28 @@ def visible_examiner_reports(user):
     if role in (Role.SENATE_ADMIN, Role.SCHOOL_ADMIN):
         return qs
     return qs.none()
+
+
+EXAMINER_REPORT_FILTERS = {
+    "faculty": "faculty_id",
+    "programme": "programme_id",
+    "session": "session_id",
+    "semester": "semester_id",
+}
+
+
+def filter_examiner_reports(qs, params):
+    """Narrow captured examiner reports to the programme/term a board is on."""
+    for param, lookup in EXAMINER_REPORT_FILTERS.items():
+        value = params.get(param)
+        if not value:
+            continue
+        try:
+            uuid.UUID(str(value))
+        except ValueError:
+            return qs.none()
+        qs = qs.filter(**{lookup: value})
+    return qs
 
 
 # --------------------------------------------------------------------------- #

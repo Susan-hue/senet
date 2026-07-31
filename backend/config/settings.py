@@ -157,6 +157,14 @@ if EMAIL_BACKEND == "django.core.mail.backends.smtp.EmailBackend":
 EMAIL_VERIFICATION_MAX_AGE = 60 * 60 * 24
 PASSWORD_RESET_MAX_AGE = 60 * 60
 
+# Resending a verification email is unauthenticated and costs us a real send, so
+# it is capped per address. The frontend's countdown paces an honest user well
+# inside this; the cap is for everyone else.
+VERIFICATION_RESEND_LIMIT = config("VERIFICATION_RESEND_LIMIT", default=3, cast=int)
+VERIFICATION_RESEND_WINDOW_SECONDS = config(
+    "VERIFICATION_RESEND_WINDOW_SECONDS", default=900, cast=int
+)
+
 IMPORT_MAX_FILE_BYTES = config("IMPORT_MAX_FILE_BYTES", default=5 * 1024 * 1024, cast=int)
 IMPORT_SYNC_MAX_ROWS = config("IMPORT_SYNC_MAX_ROWS", default=500, cast=int)
 
@@ -185,9 +193,18 @@ if CELERY_RESULT_BACKEND.startswith("rediss://"):
     CELERY_REDIS_BACKEND_USE_SSL = {"ssl_cert_reqs": _CELERY_SSL_CERT_REQS}
 
 # How often Celery beat sweeps for exam attempts past their deadline and
-# auto-submits them. Short by design — the finalizer is idempotent and row-locked,
-# so frequent, overlapping runs are safe.
-CBT_FINALIZE_INTERVAL_SECONDS = config("CBT_FINALIZE_INTERVAL_SECONDS", default=60, cast=int)
+# auto-submits them.
+#
+# This is a safety net, not the primary mechanism: every request that touches an
+# attempt (resume, save-answer, submit) already finalizes it if the deadline has
+# passed, so a student who is present has their attempt settled synchronously.
+# The sweep exists only for attempts nobody comes back to — a student who lost
+# power mid-exam — where a few minutes' delay costs nothing. Polling it every
+# minute burned broker requests around the clock for that rare case.
+#
+# The finalizer is idempotent and row-locked, so the interval is free to change
+# and overlapping runs remain safe.
+CBT_FINALIZE_INTERVAL_SECONDS = config("CBT_FINALIZE_INTERVAL_SECONDS", default=300, cast=int)
 
 # Proctoring webcam media limits. Snapshots are small images; short clips a few MB.
 CBT_WEBCAM_MAX_FILE_BYTES = config("CBT_WEBCAM_MAX_FILE_BYTES", default=8 * 1024 * 1024, cast=int)

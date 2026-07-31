@@ -20,21 +20,46 @@ from tenancy.scoping import get_current_institution
 
 
 class RegisterSerializer(serializers.ModelSerializer):
+    """Public sign-up. Students only.
+
+    Staff — lecturers, HODs, deans, exam officers, course advisers, admins — are
+    provisioned by their institution's administrator, because their role carries
+    authority over other people's results and cannot be self-asserted. ``role`` is
+    therefore not a writable field here: a caller who posts one is rejected
+    outright rather than silently downgraded, so nobody is left believing they
+    hold a staff account.
+    """
+
     password = serializers.CharField(write_only=True)
 
     class Meta:
         model = User
-        fields = ["email", "full_name", "password", "role"]
-        extra_kwargs = {"role": {"required": False}}
+        fields = ["email", "full_name", "password"]
 
     def validate_password(self, value):
         validate_password(value)
         return value
 
+    def validate(self, attrs):
+        requested = self.initial_data.get("role")
+        if requested not in (None, "", Role.STUDENT):
+            raise serializers.ValidationError(
+                {
+                    "role": (
+                        "Only students can create an account here. Staff accounts are "
+                        "created by your institution's administrator."
+                    )
+                }
+            )
+        return attrs
+
     def create(self, validated_data):
         password = validated_data.pop("password")
-        validated_data.setdefault("role", Role.STUDENT)
-        return User.objects.create_user(password=password, is_verified=False, **validated_data)
+        # Forced, never taken from input: the role is the whole point of the guard.
+        validated_data.pop("role", None)
+        return User.objects.create_user(
+            password=password, role=Role.STUDENT, is_verified=False, **validated_data
+        )
 
 
 class LoginSerializer(serializers.Serializer):
@@ -137,6 +162,10 @@ class UserAdminSerializer(serializers.ModelSerializer):
 
 
 class PasswordResetRequestSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+
+
+class ResendVerificationSerializer(serializers.Serializer):
     email = serializers.EmailField()
 
 

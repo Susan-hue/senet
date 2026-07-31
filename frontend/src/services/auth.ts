@@ -11,6 +11,11 @@ export function login(payload: LoginPayload) {
   return apiRequest<TokenData>(`${BASE}/login`, { method: "POST", body: payload });
 }
 
+/** Ask for a fresh verification link. Rate-limited server-side per address. */
+export function resendVerification(email: string) {
+  return apiRequest<null>(`${BASE}/verify-email/resend`, { method: "POST", body: { email } });
+}
+
 export function verifyEmail(token: string) {
   return apiRequest<null>(`${BASE}/verify-email?token=${encodeURIComponent(token)}`, {
     method: "GET",

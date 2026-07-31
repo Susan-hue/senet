@@ -3,9 +3,29 @@ import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { AuthProvider } from "./context";
 import { useAuth } from "./hooks";
 import { FullPageLoader } from "./components";
-import { ADMIN_ROLES, LECTURER_ROLES, STUDENT_ROLES } from "./types";
+import {
+  ADMIN_ROLES,
+  DEAN_ROLES,
+  HOD_ROLES,
+  LECTURER_ROLES,
+  SENATE_ROLES,
+  STUDENT_ROLES,
+} from "./types";
 import type { Role } from "./types";
-import { AwardIcon, BookIcon, ClipboardIcon } from "./features/admin/adminIcons";
+import {
+  AwardIcon,
+  BookIcon,
+  ClipboardIcon,
+  LayersIcon,
+  UsersIcon,
+} from "./features/admin/adminIcons";
+import {
+  BoardSheetPage,
+  DeanBoardPage,
+  ExternalExaminersPage,
+  HodBoardPage,
+  SenateBoardPage,
+} from "./features/board";
 import { MyCoursesPage, ScoreSheetPage } from "./features/results";
 import { AssessmentsPage, GradeItemPage } from "./features/assessments";
 import { MyResultsPage } from "./features/student";
@@ -49,6 +69,11 @@ function RoleHome() {
   const { user } = useAuth();
   if (user?.role && ADMIN_ROLES.includes(user.role)) return <Navigate to="/dashboard" replace />;
   if (user?.role === "lecturer") return <Navigate to="/teach" replace />;
+  // Each approval stage lands on its own board rather than a shared inbox: the
+  // work, the scope and the consequences of a decision differ at every stage.
+  if (user?.role && HOD_ROLES.includes(user.role)) return <Navigate to="/board" replace />;
+  if (user?.role && DEAN_ROLES.includes(user.role)) return <Navigate to="/faculty" replace />;
+  if (user?.role && SENATE_ROLES.includes(user.role)) return <Navigate to="/senate" replace />;
   if (user?.role && STUDENT_ROLES.includes(user.role)) {
     return <Navigate to="/me/results" replace />;
   }
@@ -61,6 +86,15 @@ const LECTURER_NAV = [
 ];
 
 const STUDENT_NAV = [{ to: "/me/results", label: "My Results", Icon: AwardIcon }];
+
+const HOD_NAV = [{ to: "/board", label: "Departmental Board", Icon: ClipboardIcon, end: true }];
+
+const DEAN_NAV = [
+  { to: "/faculty", label: "Faculty Board", Icon: ClipboardIcon, end: true },
+  { to: "/faculty/external-examiners", label: "External Examiners", Icon: UsersIcon },
+];
+
+const SENATE_NAV = [{ to: "/senate", label: "Senate Ratification", Icon: LayersIcon, end: true }];
 
 function GuestRoute({ children }: { children: ReactElement }) {
   const { status } = useAuth();
@@ -108,6 +142,42 @@ function AppRoutes() {
         }
       >
         <Route path="/me/results" element={<MyResultsPage />} />
+      </Route>
+
+      {/* The approval chain. Each board is gated to the single role that owns
+          its stage — the API enforces the same split on every transition. */}
+      <Route
+        element={
+          <ProtectedRoute roles={HOD_ROLES}>
+            <AdminLayout nav={HOD_NAV} brandSub="Departmental Board" rolePill="HOD" />
+          </ProtectedRoute>
+        }
+      >
+        <Route path="/board" element={<HodBoardPage />} />
+        <Route path="/board/sheet/:resultId" element={<BoardSheetPage board="hod" />} />
+      </Route>
+
+      <Route
+        element={
+          <ProtectedRoute roles={DEAN_ROLES}>
+            <AdminLayout nav={DEAN_NAV} brandSub="Faculty Board" rolePill="Dean" />
+          </ProtectedRoute>
+        }
+      >
+        <Route path="/faculty" element={<DeanBoardPage />} />
+        <Route path="/faculty/sheet/:resultId" element={<BoardSheetPage board="dean" />} />
+        <Route path="/faculty/external-examiners" element={<ExternalExaminersPage />} />
+      </Route>
+
+      <Route
+        element={
+          <ProtectedRoute roles={SENATE_ROLES}>
+            <AdminLayout nav={SENATE_NAV} brandSub="Senate" rolePill="Senate" />
+          </ProtectedRoute>
+        }
+      >
+        <Route path="/senate" element={<SenateBoardPage />} />
+        <Route path="/senate/sheet/:resultId" element={<BoardSheetPage board="senate" />} />
       </Route>
 
       <Route

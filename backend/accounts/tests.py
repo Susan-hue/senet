@@ -1,7 +1,9 @@
 import io
+from urllib.parse import unquote
 
 from django.conf import settings
 from django.core import mail
+from django.core.cache import cache
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 from django.urls import reverse
@@ -31,8 +33,11 @@ NEW_PASSWORD = "AnotherPass456!"
 
 
 def _token_from_outbox(index=0):
+    # The link sits inside prose, so take the token up to the next whitespace
+    # rather than to the end of the body, and undo the query-string escaping a
+    # browser would undo for us (signed tokens contain ":").
     body = mail.outbox[index].body
-    return body.split("token=")[1].strip()
+    return unquote(body.split("token=")[1].split()[0].strip())
 
 
 class AuthAPITests(APITestCase):
@@ -79,7 +84,83 @@ class AuthAPITests(APITestCase):
         self.assertFalse(user.is_verified)
 
         self.assertEqual(len(mail.outbox), 1)
-        self.assertIn("Verify", mail.outbox[0].subject)
+        self.assertIn("Confirm", mail.outbox[0].subject)
+        self.assertEqual(user.role, Role.STUDENT)
+
+    def test_public_registration_cannot_claim_a_staff_role(self):
+        """Staff hold authority over other people's results, so the role can only
+        come from an administrator — never from the sign-up form."""
+        for role in (Role.LECTURER, Role.HOD, Role.DEAN, Role.EXAM_OFFICER, Role.SCHOOL_ADMIN):
+            with self.subTest(role=role):
+                response = self.client.post(
+                    self.register_url,
+                    {
+                        "email": f"{role}@example.com",
+                        "full_name": "Chancer",
+                        "password": PASSWORD,
+                        "role": role,
+                    },
+                    format="json",
+                )
+                self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+                self.assertEqual(response.data["status"], "error")
+                self.assertIn("role", response.data["errors"])
+                self.assertFalse(User.objects.filter(email=f"{role}@example.com").exists())
+
+    def test_registration_accepts_an_explicit_student_role(self):
+        response = self.client.post(
+            self.register_url,
+            {
+                "email": "student@example.com",
+                "full_name": "Ada",
+                "password": PASSWORD,
+                "role": Role.STUDENT,
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(User.objects.get(email="student@example.com").role, Role.STUDENT)
+
+    @override_settings(FRONTEND_URL="https://senet-pi.vercel.app")
+    def test_verification_link_is_built_from_the_configured_frontend_url(self):
+        self._register()
+
+        body = mail.outbox[0].body
+        html = mail.outbox[0].alternatives[0][0]
+        self.assertIn("https://senet-pi.vercel.app/verify-email?token=", body)
+        self.assertIn("https://senet-pi.vercel.app/verify-email?token=", html)
+        self.assertNotIn("localhost", body)
+        self.assertNotIn("localhost", html)
+
+    @override_settings(FRONTEND_URL="https://senet-pi.vercel.app/")
+    def test_a_trailing_slash_on_the_setting_does_not_double_up(self):
+        self._register()
+        self.assertIn("https://senet-pi.vercel.app/verify-email", mail.outbox[0].body)
+        self.assertNotIn("app//verify-email", mail.outbox[0].body)
+
+    @override_settings(FRONTEND_URL="https://senet-pi.vercel.app")
+    def test_reset_link_is_built_from_the_configured_frontend_url(self):
+        self._register()
+        self._verify_latest()
+        mail.outbox.clear()
+
+        self.client.post(self.reset_url, {"email": "user@example.com"}, format="json")
+
+        self.assertIn("https://senet-pi.vercel.app/reset-password?token=", mail.outbox[0].body)
+        self.assertNotIn("localhost", mail.outbox[0].body)
+
+    def test_emails_carry_both_a_plain_text_and_an_html_part(self):
+        self._register()
+
+        message = mail.outbox[0]
+        self.assertEqual(len(message.alternatives), 1)
+        html, content_type = message.alternatives[0]
+        self.assertEqual(content_type, "text/html")
+        self.assertIn("Senet", html)
+        self.assertIn("Confirm your email address", html)
+        # The plain-text part must stand on its own for text-only clients.
+        self.assertIn("Senet", message.body)
+        self.assertNotIn("<table", message.body)
 
     def test_verify_email_marks_user_verified(self):
         self._register()
@@ -159,6 +240,78 @@ class AuthAPITests(APITestCase):
 
         self.assertEqual(self._login(password=PASSWORD).status_code, status.HTTP_401_UNAUTHORIZED)
         self.assertEqual(self._login(password=NEW_PASSWORD).status_code, status.HTTP_200_OK)
+
+
+class ResendVerificationTests(APITestCase):
+    """The resend endpoint is unauthenticated and spends a real email per call,
+    so it is capped — and it must not become a way to discover which addresses
+    have accounts."""
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        celery_app.conf.task_always_eager = True
+        celery_app.conf.task_eager_propagates = True
+
+    def setUp(self):
+        cache.clear()
+        self.resend_url = reverse("auth-verify-email-resend")
+        self.client.post(
+            reverse("auth-register"),
+            {"email": "user@example.com", "full_name": "Test User", "password": PASSWORD},
+            format="json",
+        )
+        mail.outbox.clear()
+
+    def _resend(self, email="user@example.com"):
+        return self.client.post(self.resend_url, {"email": email}, format="json")
+
+    def test_resend_sends_a_fresh_usable_link(self):
+        response = self._resend()
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["status"], "success")
+        self.assertEqual(len(mail.outbox), 1)
+
+        verify = self.client.get(reverse("auth-verify-email"), {"token": _token_from_outbox()})
+        self.assertEqual(verify.status_code, status.HTTP_200_OK)
+        self.assertTrue(User.objects.get(email="user@example.com").is_verified)
+
+    def test_resend_is_rate_limited_per_address(self):
+        for attempt in range(settings.VERIFICATION_RESEND_LIMIT):
+            with self.subTest(attempt=attempt):
+                self.assertEqual(self._resend().status_code, status.HTTP_200_OK)
+
+        blocked = self._resend()
+        self.assertEqual(blocked.status_code, status.HTTP_429_TOO_MANY_REQUESTS)
+        self.assertEqual(blocked.data["status"], "error")
+        self.assertEqual(len(mail.outbox), settings.VERIFICATION_RESEND_LIMIT)
+
+    def test_rate_limit_is_scoped_to_the_address_not_the_caller(self):
+        """A campus shares one egress IP; throttling the caller would lock out
+        everybody the moment one student retried."""
+        for _ in range(settings.VERIFICATION_RESEND_LIMIT):
+            self._resend()
+        self.assertEqual(self._resend().status_code, status.HTTP_429_TOO_MANY_REQUESTS)
+
+        # A different address, same client, is unaffected.
+        self.assertEqual(self._resend("someone.else@example.com").status_code, status.HTTP_200_OK)
+
+    def test_unknown_and_verified_addresses_are_indistinguishable_from_success(self):
+        unknown = self._resend("nobody@example.com")
+        self.assertEqual(unknown.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(mail.outbox), 0)
+
+        User.objects.filter(email="user@example.com").update(is_verified=True)
+        already = self._resend()
+        self.assertEqual(already.status_code, status.HTTP_200_OK)
+        self.assertEqual(already.data["message"], unknown.data["message"])
+        self.assertEqual(len(mail.outbox), 0)
+
+    def test_invalid_email_is_rejected(self):
+        response = self._resend("not-an-email")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("email", response.data["errors"])
 
 
 def _member(institution, email, role):

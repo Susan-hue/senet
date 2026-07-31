@@ -1,0 +1,473 @@
+/* --- Scope drill --- */
+.scopeBar {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 14px;
+  padding: 16px 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.scopeStep {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+}
+
+.scopeIndex {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  margin-top: 22px;
+  border-radius: 50%;
+  border: 1px solid var(--border-hover);
+  color: var(--text-faint);
+  font-family: var(--mono);
+  font-size: 0.66rem;
+}
+
+.scopeField {
+  flex: 1;
+  min-width: 0;
+}
+
+.scopeLabel {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.scopeSelect {
+  width: 100%;
+  height: 38px;
+  padding: 0 32px 0 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface-2)
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%238a8a92' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")
+    no-repeat right 10px center;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 0.88rem;
+  cursor: pointer;
+  appearance: none;
+  text-overflow: ellipsis;
+}
+
+.scopeSelect:focus {
+  outline: none;
+  border-color: var(--border-strong);
+}
+
+.scopeSelect:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+/* A level pinned by the actor's own role — shown so the scope reads in full,
+   but not something they can move. */
+.scopeLocked {
+  display: flex;
+  align-items: center;
+  height: 38px;
+  padding: 0 12px;
+  border-radius: var(--radius-sm);
+  border: 1px dashed var(--border-hover);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.88rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.countNote {
+  margin-left: auto;
+  font-size: 0.82rem;
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+
+/* --- Vetting indicators --- */
+.vetting {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.flagStack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.flag {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  padding: 14px 16px;
+  border: 1px solid rgba(241, 100, 108, 0.35);
+  border-radius: var(--radius);
+  background: var(--danger-soft);
+}
+
+.flagDot {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  margin-top: 7px;
+  border-radius: 50%;
+  background: var(--danger);
+}
+
+.flagTitle {
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.flagDetail {
+  margin-top: 3px;
+  font-size: 0.86rem;
+  color: var(--text-muted);
+  line-height: 1.55;
+}
+
+.flagClear {
+  border-color: rgba(61, 214, 140, 0.28);
+  background: var(--success-soft);
+}
+
+.flagClear .flagDot {
+  background: var(--success);
+}
+
+.metricGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+}
+
+.metric {
+  display: flex;
+  flex-direction: column;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.metricLabel {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.metricValue {
+  margin-top: 6px;
+  font-size: 1.5rem;
+  font-weight: 650;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+  color: var(--text-primary);
+}
+
+.metricDanger {
+  color: #ff9297;
+}
+
+.metricFoot {
+  margin-top: 5px;
+  font-size: 0.75rem;
+  color: var(--text-faint);
+}
+
+.distribution {
+  padding: 16px 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.distTitle {
+  margin-bottom: 12px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.distRows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.distRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.distLetter {
+  width: 24px;
+  flex-shrink: 0;
+  font-family: var(--mono);
+  font-size: 0.82rem;
+  color: var(--text-label);
+}
+
+.distTrack {
+  flex: 1;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--surface-hover);
+  overflow: hidden;
+}
+
+.distFill {
+  display: block;
+  height: 100%;
+  border-radius: 4px;
+  background: var(--accent);
+  transition: width 0.25s ease;
+}
+
+.distCount {
+  width: 34px;
+  flex-shrink: 0;
+  text-align: right;
+  font-family: var(--mono);
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+
+/* --- Worklist --- */
+.checkCell {
+  width: 44px;
+}
+
+.check {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.rowSelected td {
+  background: var(--accent-soft);
+}
+
+.courseLink {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  color: inherit;
+}
+
+.courseCode {
+  font-family: var(--mono);
+  font-size: 0.86rem;
+  font-weight: 600;
+  color: var(--accent-link);
+}
+
+.courseTitle {
+  font-size: 0.84rem;
+  color: var(--text-muted);
+}
+
+.courseLink:hover .courseTitle {
+  color: var(--text);
+}
+
+.remarkCell {
+  max-width: 340px;
+  color: var(--text-muted);
+  font-size: 0.86rem;
+}
+
+/* --- Sheet detail --- */
+.crumbs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.84rem;
+  color: var(--text-faint);
+}
+
+.crumbLink {
+  color: var(--text-muted);
+}
+
+.crumbLink:hover {
+  color: var(--text-primary);
+}
+
+.headActions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.panelSearch {
+  width: min(320px, 100%);
+}
+
+.gradeChip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 30px;
+  height: 24px;
+  padding: 0 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border-hover);
+  background: var(--surface-hover);
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+/* --- Action bars --- */
+.actionBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 16px 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.actionHint {
+  flex: 1;
+  min-width: 220px;
+  font-size: 0.86rem;
+  color: var(--text-muted);
+  line-height: 1.55;
+}
+
+.actionButtons {
+  display: flex;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+/* The batch bar follows the board down the page: a selection made at the top of
+   a long list has to stay actionable at the bottom of it. */
+.batchBar {
+  position: sticky;
+  bottom: 16px;
+  border-color: var(--border-hover);
+  box-shadow: var(--shadow);
+}
+
+.batchCount {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+/* --- Dialogs --- */
+.dialogBody {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.dialogText {
+  color: var(--text-muted);
+  font-size: 0.92rem;
+  line-height: 1.6;
+}
+
+.dialogText strong {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.dialogField {
+  display: block;
+}
+
+.req {
+  color: var(--accent-lavender);
+}
+
+.textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 0.9rem;
+  line-height: 1.55;
+  resize: vertical;
+  transition: border-color 0.15s ease;
+}
+
+.textarea:focus {
+  outline: none;
+  border-color: var(--border-strong);
+}
+
+.textarea[aria-invalid="true"] {
+  border-color: rgba(241, 100, 108, 0.55);
+}
+
+.dialogHint {
+  display: block;
+  margin-top: 6px;
+  font-size: 0.79rem;
+  color: var(--text-faint);
+}
+
+.dialogError {
+  color: #ff9297;
+}
+
+@media (max-width: 720px) {
+  .scopeBar {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .scopeIndex {
+    display: none;
+  }
+
+  .countNote {
+    margin-left: 0;
+  }
+
+  .actionButtons {
+    width: 100%;
+  }
+
+  .actionButtons > * {
+    flex: 1;
+  }
+
+  .batchBar {
+    bottom: 0;
+  }
+
+  .remarkCell {
+    max-width: 220px;
+  }
+}

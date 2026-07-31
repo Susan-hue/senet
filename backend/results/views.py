@@ -56,10 +56,9 @@ class ResultListCreateView(TenantAPIView):
         return [CanViewResults()]
 
     def get(self, request):
-        qs = (
-            services.visible_results(request.user)
-            .select_related("course", "lecturer")
-            .order_by("-created_at")
+        qs = services.filter_results(services.visible_results(request.user), request.query_params)
+        qs = qs.select_related("course__department", "session", "semester", "lecturer").order_by(
+            "-created_at"
         )
         paginator = DirectoryPagination()
         page = paginator.paginate_queryset(qs, request, view=self)
@@ -84,7 +83,7 @@ class ResultDetailView(TenantAPIView):
     def get(self, request, pk):
         result = (
             services.visible_results(request.user)
-            .select_related("course", "lecturer")
+            .select_related("course__department", "session", "semester", "lecturer")
             .filter(pk=pk)
             .first()
         )
@@ -117,15 +116,21 @@ class SubmitResultView(TenantAPIView):
 class ApprovalWorklistView(TenantAPIView):
     """The sheets awaiting the current actor's approval — HODs see submissions in
     their department, Deans HOD-approved sheets in their faculty, Senate admins
-    dean-approved sheets institution-wide."""
+    dean-approved sheets institution-wide.
+
+    Boards drill rather than browse, so the role-scoped queryset is further
+    narrowed by the ``faculty``/``department``/``session``/``semester``/``course``
+    and ``search`` parameters before it is paginated. Filters can only subtract
+    from what the role already allows."""
 
     permission_classes = [CanViewResults]
 
     def get(self, request):
-        qs = (
-            services.pending_results_for(request.user)
-            .select_related("course", "lecturer")
-            .order_by("-created_at")
+        qs = services.filter_results(
+            services.pending_results_for(request.user), request.query_params
+        )
+        qs = qs.select_related("course__department", "session", "semester", "lecturer").order_by(
+            "-created_at"
         )
         return _paginated(request, self, qs, CourseResultSerializer)
 
@@ -180,7 +185,7 @@ class BatchRatifyView(TenantAPIView):
 def _visible_result_or_404(user, pk):
     result = (
         services.visible_results(user)
-        .select_related("institution", "course", "session", "semester", "lecturer")
+        .select_related("institution", "course__department", "session", "semester", "lecturer")
         .filter(pk=pk)
         .first()
     )
@@ -293,8 +298,15 @@ class ExternalExaminerReportListCreateView(TenantAPIView):
         return [CanViewResults()]
 
     def get(self, request):
-        qs = services.visible_examiner_reports(request.user).select_related("faculty", "programme")
-        return _paginated(request, self, qs, ExternalExaminerReportSerializer)
+        qs = services.filter_examiner_reports(
+            services.visible_examiner_reports(request.user), request.query_params
+        )
+        return _paginated(
+            request,
+            self,
+            qs.select_related("faculty", "programme"),
+            ExternalExaminerReportSerializer,
+        )
 
     def post(self, request):
         serializer = CreateExternalExaminerReportSerializer(data=request.data)

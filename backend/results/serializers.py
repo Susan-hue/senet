@@ -39,6 +39,13 @@ class CourseResultSerializer(serializers.ModelSerializer):
     course_code = serializers.CharField(source="course.code", read_only=True)
     course_title = serializers.CharField(source="course.title", read_only=True)
     lecturer_name = serializers.CharField(source="lecturer.full_name", read_only=True)
+    # Approval boards list sheets across a department or faculty, so they need
+    # the term and owning department by name without a second round trip.
+    session_name = serializers.CharField(source="session.name", read_only=True)
+    semester_name = serializers.CharField(source="semester.name", read_only=True)
+    department = serializers.UUIDField(source="course.department_id", read_only=True)
+    department_name = serializers.CharField(source="course.department.name", read_only=True)
+    faculty = serializers.UUIDField(source="course.department.faculty_id", read_only=True)
 
     class Meta:
         model = CourseResult
@@ -49,7 +56,12 @@ class CourseResultSerializer(serializers.ModelSerializer):
             "course_code",
             "course_title",
             "session",
+            "session_name",
             "semester",
+            "semester_name",
+            "department",
+            "department_name",
+            "faculty",
             "lecturer",
             "lecturer_name",
             "status",
