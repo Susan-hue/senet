@@ -16,8 +16,9 @@ from datetime import timedelta
 from decimal import Decimal
 from unittest import skipUnless
 
+from django.conf import settings
 from django.db import connection, connections
-from django.test import TransactionTestCase
+from django.test import SimpleTestCase, TransactionTestCase
 from django.urls import reverse
 from django.utils import timezone
 from rest_framework import status
@@ -815,6 +816,49 @@ class FinalizerTests(CbtTestBase):
         self.assertEqual(finalize_expired_attempts(), 0)
         attempt.refresh_from_db()
         self.assertEqual(attempt.status, AttemptStatus.IN_PROGRESS)
+
+    def test_present_student_is_settled_without_the_sweep_running(self):
+        """The sweep's interval only bounds the delay for students who never come
+        back. Anyone who touches their attempt is finalized in that request, so
+        lengthening the interval cannot leave a live attempt hanging."""
+        attempt = self._objective_attempt()
+        self.expire(attempt)
+
+        self.client.force_authenticate(self.student)
+        self.client.get(reverse("cbt-attempt-detail", args=[attempt.id]))
+
+        attempt.refresh_from_db()
+        self.assertEqual(attempt.status, AttemptStatus.GRADED)
+        self.assertEqual(attempt.score, Decimal("4.00"))
+        # ...and the sweep then has nothing left to do.
+        self.assertEqual(finalize_expired_attempts(), 0)
+
+
+class BeatScheduleTests(SimpleTestCase):
+    """The periodic sweeps are safety nets over paths that already run inline, so
+    each one is a broker round trip that must earn its frequency. Both are
+    deliberately infrequent and env-tunable; pin that so it is not quietly
+    tightened back to a per-minute poll."""
+
+    def test_finalize_sweep_interval_is_env_configurable_and_not_per_minute(self):
+        entry = settings.CELERY_BEAT_SCHEDULE["cbt-finalize-expired-attempts"]
+        self.assertEqual(entry["task"], "cbt.tasks.finalize_expired_attempts_task")
+        self.assertEqual(entry["schedule"], float(settings.CBT_FINALIZE_INTERVAL_SECONDS))
+        self.assertGreaterEqual(settings.CBT_FINALIZE_INTERVAL_SECONDS, 300)
+
+    def test_exam_open_sweep_interval_stays_within_its_lookback_window(self):
+        entry = settings.CELERY_BEAT_SCHEDULE["notifications-sweep-opened-exams"]
+        self.assertEqual(entry["task"], "notifications.tasks.notify_opened_exams")
+        self.assertEqual(entry["schedule"], float(settings.EXAM_OPEN_SWEEP_INTERVAL_SECONDS))
+        self.assertGreaterEqual(settings.EXAM_OPEN_SWEEP_INTERVAL_SECONDS, 300)
+        # The sweep only sees exams that opened inside its lookback, so running
+        # less often than that would silently drop notices.
+        self.assertLessEqual(settings.EXAM_OPEN_SWEEP_INTERVAL_SECONDS, 60 * 60)
+
+    def test_no_other_periodic_task_polls_more_often_than_five_minutes(self):
+        for name, entry in settings.CELERY_BEAT_SCHEDULE.items():
+            with self.subTest(task=name):
+                self.assertGreaterEqual(entry["schedule"], 300)
 
 
 class BatchSaveTests(CbtTestBase):

@@ -32,6 +32,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           role: me.role,
           institutionName: me.institution_name,
           departmentId: me.department,
+          departmentName: me.department_name,
+          facultyId: me.faculty,
+          facultyName: me.faculty_name,
         };
       } else {
         throw new Error("empty profile");
@@ -45,6 +48,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         role: null,
         institutionName: null,
         departmentId: null,
+        departmentName: null,
+        facultyId: null,
+        facultyName: null,
       };
     }
 

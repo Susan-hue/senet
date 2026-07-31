@@ -5,6 +5,7 @@ import type {
   CourseResultDetail,
   ExportJob,
   ExportKind,
+  ExternalExaminerReport,
   Page,
   StudentScore,
 } from "../types";
@@ -17,19 +18,109 @@ const EXPORT_PATH: Record<ExportKind, string> = {
   ogr: "ogr",
 };
 
+function withQuery(path: string, params: object) {
+  const search = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== "") search.set(key, String(value));
+  });
+  const qs = search.toString();
+  return qs ? `${path}?${qs}` : path;
+}
+
+/**
+ * Scope a listing to one slice of the hierarchy. Result sheets run to the
+ * thousands institution-wide, so every board request carries the faculty /
+ * department / term it drilled into and a page number — never an unbounded read.
+ */
 export interface ResultListParams {
   page?: number;
   page_size?: number;
+  faculty?: string;
+  department?: string;
+  session?: string;
+  semester?: string;
+  course?: string;
+  search?: string;
 }
 
 export function listResults(token: string, params: ResultListParams = {}) {
-  const search = new URLSearchParams();
-  if (params.page) search.set("page", String(params.page));
-  if (params.page_size) search.set("page_size", String(params.page_size));
-  const qs = search.toString();
-  return apiRequest<Page<CourseResult>>(qs ? `${RESULTS}?${qs}` : RESULTS, { token }).then(
+  return apiRequest<Page<CourseResult>>(withQuery(RESULTS, params), { token }).then(
     (r) => r.data ?? (EMPTY_PAGE as Page<CourseResult>),
   );
+}
+
+/**
+ * The sheets awaiting the caller's own decision. The backend picks the stage
+ * from their role — HODs get submissions in their department, deans HOD-approved
+ * sheets in their faculty, senate admins dean-approved sheets institution-wide —
+ * so the same call backs all three boards.
+ */
+export function listWorklist(token: string, params: ResultListParams = {}) {
+  return apiRequest<Page<CourseResult>>(withQuery(`${RESULTS}/worklist`, params), { token }).then(
+    (r) => r.data ?? (EMPTY_PAGE as Page<CourseResult>),
+  );
+}
+
+/** Advance a sheet one stage for the caller's role. */
+export function approveResult(resultId: string, token: string) {
+  return apiRequest<CourseResult>(`${RESULTS}/${resultId}/approve`, {
+    method: "POST",
+    token,
+  }).then((r) => r.data as CourseResult);
+}
+
+/** Send a sheet back to its lecturer. The reason is mandatory server-side too. */
+export function returnResult(resultId: string, reason: string, token: string) {
+  return apiRequest<CourseResult>(`${RESULTS}/${resultId}/return`, {
+    method: "POST",
+    body: { reason },
+    token,
+  }).then((r) => r.data as CourseResult);
+}
+
+/**
+ * Senate ratification. All-or-nothing on the server: if any sheet in the batch
+ * cannot be ratified, none of them are.
+ */
+export function batchRatify(resultIds: string[], token: string, reason = "") {
+  return apiRequest<CourseResult[]>(`${RESULTS}/ratify`, {
+    method: "POST",
+    body: { result_ids: resultIds, reason },
+    token,
+  }).then((r) => r.data ?? []);
+}
+
+export interface ExaminerReportParams {
+  page?: number;
+  page_size?: number;
+  programme?: string;
+  session?: string;
+  semester?: string;
+}
+
+export function listExaminerReports(token: string, params: ExaminerReportParams = {}) {
+  return apiRequest<Page<ExternalExaminerReport>>(
+    withQuery(`${RESULTS}/external-examiner-reports`, params),
+    { token },
+  ).then((r) => r.data ?? (EMPTY_PAGE as Page<ExternalExaminerReport>));
+}
+
+export interface ExaminerReportPayload {
+  programme: string;
+  session: string;
+  semester: string;
+  examiner_name: string;
+  examiner_institution: string;
+  audit_date: string;
+  remarks: string;
+}
+
+export function createExaminerReport(body: ExaminerReportPayload, token: string) {
+  return apiRequest<ExternalExaminerReport>(`${RESULTS}/external-examiner-reports`, {
+    method: "POST",
+    body,
+    token,
+  }).then((r) => r.data as ExternalExaminerReport);
 }
 
 export function getResult(id: string, token: string) {

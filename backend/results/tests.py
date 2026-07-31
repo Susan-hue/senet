@@ -704,6 +704,64 @@ class ApprovalWorklistTests(ApprovalTestBase):
         self.assertEqual(self.client.get(reverse("result-worklist")).data["data"]["count"], 1)
 
 
+class WorklistFilterTests(ApprovalTestBase):
+    """Boards drill into a scope rather than listing everything, so the worklist
+    narrows on faculty/department/term/course — and a filter can only subtract
+    from what the role already allows."""
+
+    def _worklist(self, actor, **params):
+        self.client.force_authenticate(actor)
+        return self.client.get(reverse("result-worklist"), params).data["data"]
+
+    def test_filters_narrow_by_department_and_course(self):
+        self.make_submitted()
+        second = self.second_course()
+        self.submitted_for(second, self.enrol("s2@veritas.edu", second))
+
+        self.assertEqual(self._worklist(self.hod)["count"], 2)
+        self.assertEqual(self._worklist(self.hod, course=str(self.course.id))["count"], 1)
+        self.assertEqual(self._worklist(self.hod, department=str(self.dept.id))["count"], 2)
+        self.assertEqual(self._worklist(self.hod, department=str(self.other_dept.id))["count"], 0)
+
+    def test_filters_narrow_by_term(self):
+        self.make_submitted()
+        other_session = Session.all_objects.create(
+            institution=self.inst,
+            name="2024/2025",
+            start_date="2024-10-01",
+            end_date="2025-07-31",
+        )
+        self.assertEqual(self._worklist(self.hod, session=str(self.session.id))["count"], 1)
+        self.assertEqual(self._worklist(self.hod, session=str(other_session.id))["count"], 0)
+        self.assertEqual(self._worklist(self.hod, semester=str(self.semester.id))["count"], 1)
+
+    def test_search_matches_course_and_lecturer(self):
+        self.make_submitted()
+        self.assertEqual(self._worklist(self.hod, search="CSC 101")["count"], 1)
+        self.assertEqual(self._worklist(self.hod, search="lect")["count"], 1)
+        self.assertEqual(self._worklist(self.hod, search="nothing here")["count"], 0)
+
+    def test_faculty_filter_cannot_widen_role_scope(self):
+        result = self.make_submitted()
+        self.advance_to(result, ResultStatus.APPROVED_BY_HOD)
+        # The other faculty's dean asking for this faculty still sees nothing.
+        page = self._worklist(self.wrong_dean, faculty=str(self.faculty.id))
+        self.assertEqual(page["count"], 0)
+
+    def test_unparseable_filter_returns_nothing_rather_than_everything(self):
+        self.make_submitted()
+        self.assertEqual(self._worklist(self.hod, department="not-a-uuid")["count"], 0)
+
+    def test_worklist_rows_carry_term_and_department_labels(self):
+        self.make_submitted()
+        row = self._worklist(self.hod)["results"][0]
+        self.assertEqual(row["session_name"], self.session.name)
+        self.assertEqual(row["semester_name"], self.semester.name)
+        self.assertEqual(row["department_name"], self.dept.name)
+        self.assertEqual(row["department"], str(self.dept.id))
+        self.assertEqual(row["faculty"], str(self.faculty.id))
+
+
 class ApprovalActionApiTests(ApprovalTestBase):
     def test_hod_approves_via_api(self):
         result = self.make_submitted()

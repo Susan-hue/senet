@@ -7,6 +7,17 @@ primary_region = "jnb"
 [processes]
   worker = "celery -A config worker --loglevel=info"
 
+# The worker must stay alive: it has no inbound request to wake it and finds work
+# by polling the broker, so a stopped machine means queued exports, imports and
+# notifications sit unprocessed indefinitely.
+#
+# Fly's autostop/autostart is driven by the proxy, which only manages machines
+# that publish a service. This app declares none — a worker serves no HTTP — so
+# the machine is never proxy-stopped and stays up as long as one is scaled.
+# `auto_stop_machines` / `min_machines_running` are only read inside an
+# `[http_service]` or `[[services]]` block; adding one here fails validation
+# (a service must bind a port and a process). Keep the worker at one machine
+# with `fly scale count worker=1 -c fly.worker.toml`.
 [[vm]]
   size = "shared-cpu-1x"
   memory = "512mb"

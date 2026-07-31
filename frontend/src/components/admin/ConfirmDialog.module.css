@@ -8,16 +8,14 @@
   margin-top: 14px;
 }
 
-.danger {
+.confirm {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   height: 40px;
   padding: 0 18px;
   border-radius: var(--radius-sm);
-  border: 1px solid rgba(241, 100, 108, 0.4);
-  background: var(--danger-soft);
-  color: #ff9297;
+  border: 1px solid transparent;
   font: inherit;
   font-weight: 550;
   font-size: 0.9rem;
@@ -25,12 +23,29 @@
   transition: all 0.15s ease;
 }
 
+.confirm:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.danger {
+  border-color: rgba(241, 100, 108, 0.4);
+  background: var(--danger-soft);
+  color: #ff9297;
+}
+
 .danger:hover:not(:disabled) {
   background: rgba(241, 100, 108, 0.2);
   border-color: rgba(241, 100, 108, 0.6);
 }
 
-.danger:disabled {
-  opacity: 0.6;
-  cursor: default;
+/* Advancing a result is consequential but not destructive, so it reads as the
+   page's primary action rather than as a warning. */
+.primary {
+  background: var(--solid);
+  color: var(--solid-text);
+}
+
+.primary:hover:not(:disabled) {
+  background: var(--solid-hover);
 }

@@ -33,15 +33,9 @@ export type Role =
   | "school_admin"
   | "super_admin";
 
-export const ROLE_OPTIONS = [
-  { value: "student", label: "Student" },
-  { value: "course_rep", label: "Course Rep" },
-  { value: "lecturer", label: "Lecturer" },
-  { value: "course_adviser", label: "Course Adviser" },
-  { value: "dean", label: "Dean" },
-  { value: "hod", label: "HOD" },
-  { value: "exam_officer", label: "Exam Officer" },
-] as const satisfies ReadonlyArray<{ value: Role; label: string }>;
+// There is deliberately no role list for public sign-up: registration creates a
+// student and nothing else. The roles an administrator may assign live in
+// PERSON_ROLE_OPTIONS, behind the admin console.
 
 export interface AuthUser {
   id: string;
@@ -50,13 +44,19 @@ export interface AuthUser {
   role: Role | null;
   institutionName: string | null;
   departmentId: string | null;
+  departmentName: string | null;
+  facultyId: string | null;
+  facultyName: string | null;
 }
 
+/**
+ * Public sign-up is students only — staff accounts are created by an
+ * administrator — so there is deliberately no `role` here to send.
+ */
 export interface RegisterPayload {
   email: string;
   full_name: string;
   password: string;
-  role: Role;
 }
 
 export interface RegisterData {
@@ -293,7 +293,12 @@ export interface CourseResult {
   course_code: string;
   course_title: string;
   session: string;
+  session_name: string;
   semester: string;
+  semester_name: string;
+  department: string;
+  department_name: string;
+  faculty: string;
   lecturer: string;
   lecturer_name: string;
   status: ResultStatus;
@@ -316,8 +321,68 @@ export interface StudentScore {
   updated_at: string;
 }
 
+/**
+ * The vetting statistics the backend computes for a sheet. Approval boards read
+ * these rather than eyeballing the broadsheet: `flags` is the server's own
+ * judgement on whether the spread needs questioning.
+ */
+export interface AnomalyStats {
+  total_students: number;
+  class_average: string | null;
+  highest_score: string | null;
+  lowest_score: string | null;
+  failure_count: number;
+  failure_rate: string;
+  grade_distribution: Record<string, number>;
+  flags: {
+    high_failure_rate: boolean;
+    abnormally_high_grades: boolean;
+  };
+}
+
 export interface CourseResultDetail extends CourseResult {
   scores: StudentScore[];
+  statistics: AnomalyStats;
+}
+
+export interface ExternalExaminerReport {
+  id: string;
+  institution: string;
+  faculty: string;
+  faculty_name: string;
+  programme: string;
+  programme_name: string;
+  session: string;
+  semester: string;
+  examiner_name: string;
+  examiner_institution: string;
+  audit_date: string;
+  remarks: string;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AcademicStanding {
+  id: string;
+  student: string;
+  student_name: string;
+  student_identifier: string;
+  session: string;
+  semester: string;
+  term_quality_points: string;
+  term_credit_units: number;
+  gpa: string | null;
+  cumulative_quality_points: string;
+  cumulative_credit_units: number;
+  cgpa: string | null;
+  standing: StandingBand;
+  classification: string;
+  is_borderline: boolean;
+  borderline_band: string;
+  outstanding_carryovers: Array<{ code: string; title: string }>;
+  created_at: string;
+  updated_at: string;
 }
 
 export type ExportKind = "broadsheet" | "ogr";
@@ -387,6 +452,21 @@ export const RESULT_STATUS_META: Record<
 export const LECTURER_ROLES: Role[] = ["lecturer"];
 
 export const STUDENT_ROLES: Role[] = ["student", "course_rep"];
+
+// The three approval boards. Each role reaches exactly its own stage of the
+// chain; the backend enforces the same split on every transition.
+export const HOD_ROLES: Role[] = ["hod"];
+
+export const DEAN_ROLES: Role[] = ["dean"];
+
+export const SENATE_ROLES: Role[] = ["senate_admin"];
+
+/** The stage of the pipeline each board is the decision-maker for. */
+export const BOARD_STAGE: Record<"hod" | "dean" | "senate", ResultStatus> = {
+  hod: "submitted_to_hod",
+  dean: "approved_by_hod",
+  senate: "approved_by_dean",
+};
 
 // --------------------------------------------------------------------------- //
 // Continuous assessment                                                       //

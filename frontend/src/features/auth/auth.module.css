@@ -101,6 +101,25 @@
   color: var(--text-faint);
 }
 
+/* Staff cannot sign up here; say so on the form rather than letting them fill it
+   in and discover it from a server error. */
+.staffNote {
+  padding: 11px 13px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--text-muted);
+}
+
+.resendHint {
+  font-size: 12.5px;
+  line-height: 1.5;
+  text-align: center;
+  color: var(--text-faint);
+}
+
 .term {
   color: var(--text-label);
   font-weight: 500;

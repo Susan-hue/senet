@@ -7,6 +7,8 @@ interface ConfirmDialogProps {
   title: string;
   message: string;
   confirmLabel?: string;
+  /** "danger" for destructive confirmations, "primary" for consequential ones. */
+  tone?: "danger" | "primary";
   loading?: boolean;
   error?: string | null;
   onConfirm: () => void;
@@ -17,6 +19,7 @@ export function ConfirmDialog({
   title,
   message,
   confirmLabel = "Delete",
+  tone = "danger",
   loading = false,
   error,
   onConfirm,
@@ -34,7 +37,7 @@ export function ConfirmDialog({
           </Button>
           <button
             type="button"
-            className={styles.danger}
+            className={[styles.confirm, styles[tone]].join(" ")}
             onClick={onConfirm}
             disabled={loading}
             aria-busy={loading || undefined}
