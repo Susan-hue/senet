@@ -44,6 +44,11 @@ export function RemotePicker({
   const [error, setError] = useState<string | null>(null);
   const root = useRef<HTMLDivElement | null>(null);
   const searchRef = useRef<HTMLInputElement | null>(null);
+  const fetchOptionsRef = useRef(fetchOptions);
+
+  useEffect(() => {
+    fetchOptionsRef.current = fetchOptions;
+  });
 
   useEffect(() => {
     if (open) searchRef.current?.focus();
@@ -55,7 +60,7 @@ export function RemotePicker({
     setLoading(true);
     setError(null);
     const timer = setTimeout(() => {
-      fetchOptions(query.trim())
+      fetchOptionsRef.current(query.trim())
         .then((r) => {
           if (active) setResult(r);
         })
