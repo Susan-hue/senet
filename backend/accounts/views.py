@@ -10,6 +10,7 @@ from rest_framework.permissions import SAFE_METHODS, AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.exceptions import TokenError
+from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken, OutstandingToken
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from accounts import tokens
@@ -89,6 +90,35 @@ def _clear_refresh_cookie(response):
     response.set_cookie(value="", max_age=0, **_refresh_cookie_kwargs())
 
 
+def _revoke_refresh_tokens(user):
+    """Blacklist every refresh token outstanding for a user.
+
+    Used when the password changes: whoever prompted the reset must not keep a
+    working session, and a stolen refresh token would otherwise stay usable for
+    its full week.
+    """
+    for outstanding in OutstandingToken.objects.filter(user=user):
+        BlacklistedToken.objects.get_or_create(token=outstanding)
+
+
+def _within_rate_limit(key, limit, window):
+    """Sliding counter for an unauthenticated action.
+
+    Keyed on the account rather than the caller's IP: a university NATs its whole
+    campus behind one address, so an IP counter would lock out everybody the
+    moment one student retried. Counting the account throttles exactly the
+    account being targeted.
+    """
+    cache.get_or_set(key, 0, window)
+    try:
+        count = cache.incr(key)
+    except ValueError:
+        # The window lapsed between the two calls; this request opens a new one.
+        cache.set(key, 1, window)
+        count = 1
+    return count <= limit
+
+
 class RegisterView(APIView):
     permission_classes = [AllowAny]
 
@@ -129,23 +159,12 @@ class VerifyEmailView(APIView):
 
 
 def _resend_within_rate_limit(email):
-    """Per-address sliding counter over the resend window.
-
-    Keyed on the address rather than the IP: a university NATs its whole campus
-    behind one address, so an IP counter would lock out everybody the moment one
-    student retried. Counting the address throttles exactly the account being
-    targeted.
-    """
-    key = f"accounts:verify-resend:{email.lower()}"
-    window = settings.VERIFICATION_RESEND_WINDOW_SECONDS
-    cache.get_or_set(key, 0, window)
-    try:
-        count = cache.incr(key)
-    except ValueError:
-        # The window lapsed between the two calls; this request opens a new one.
-        cache.set(key, 1, window)
-        count = 1
-    return count <= settings.VERIFICATION_RESEND_LIMIT
+    """Per-address sliding counter over the resend window."""
+    return _within_rate_limit(
+        f"accounts:verify-resend:{email.lower()}",
+        settings.VERIFICATION_RESEND_LIMIT,
+        settings.VERIFICATION_RESEND_WINDOW_SECONDS,
+    )
 
 
 class ResendVerificationView(APIView):
@@ -181,7 +200,37 @@ class ResendVerificationView(APIView):
         )
 
 
+def _login_failure_key(email):
+    return f"accounts:login-failures:{email.lower()}"
+
+
+def _login_locked(email):
+    return cache.get(_login_failure_key(email), 0) >= settings.LOGIN_FAILURE_LIMIT
+
+
+def _record_login_failure(email):
+    _within_rate_limit(
+        _login_failure_key(email),
+        settings.LOGIN_FAILURE_LIMIT,
+        settings.LOGIN_FAILURE_WINDOW_SECONDS,
+    )
+
+
+def _clear_login_failures(email):
+    cache.delete(_login_failure_key(email))
+
+
 class LoginView(APIView):
+    """Email + password for an access token and a refresh cookie.
+
+    Consecutive failures are counted per address and lock the account out of this
+    endpoint for a window. Without that, an unauthenticated caller can guess
+    passwords against a known matriculation-style address list as fast as the
+    server will answer. The counter is per address rather than per IP because a
+    campus shares one address, and it is cleared by a successful login so an
+    honest student who mistypes a few times is unaffected.
+    """
+
     permission_classes = [AllowAny]
 
     def post(self, request):
@@ -189,16 +238,25 @@ class LoginView(APIView):
         if not serializer.is_valid():
             return error_response("Login failed.", serializer.errors)
 
+        email = serializer.validated_data["email"]
+        if _login_locked(email):
+            return error_response(
+                "Too many failed sign-in attempts. Wait a few minutes and try again.",
+                http_status=status.HTTP_429_TOO_MANY_REQUESTS,
+            )
+
         user = authenticate(
             request,
-            username=serializer.validated_data["email"],
+            username=email,
             password=serializer.validated_data["password"],
         )
         if user is None:
+            _record_login_failure(email)
             return error_response("Invalid credentials.", http_status=status.HTTP_401_UNAUTHORIZED)
         if not user.is_verified:
             return error_response("Email not verified.", http_status=status.HTTP_403_FORBIDDEN)
 
+        _clear_login_failures(email)
         refresh = RefreshToken.for_user(user)
         response = success_response({"access": str(refresh.access_token)}, "Login successful.")
         _set_refresh_cookie(response, refresh)
@@ -581,6 +639,14 @@ class InstitutionConfigView(APIView):
 
 
 class PasswordResetRequestView(APIView):
+    """Send a reset link. Unauthenticated, so it is capped per address like the
+    verification resend: each call spends a real email and mails a live link to
+    somebody's inbox.
+
+    The reply never says whether the address exists, and the lookup is
+    case-insensitive so it matches the same account login would.
+    """
+
     permission_classes = [AllowAny]
 
     def post(self, request):
@@ -588,7 +654,18 @@ class PasswordResetRequestView(APIView):
         if not serializer.is_valid():
             return error_response("Invalid request.", serializer.errors)
 
-        user = User.objects.filter(email=serializer.validated_data["email"]).first()
+        email = serializer.validated_data["email"]
+        if not _within_rate_limit(
+            f"accounts:password-reset:{email.lower()}",
+            settings.PASSWORD_RESET_REQUEST_LIMIT,
+            settings.PASSWORD_RESET_REQUEST_WINDOW_SECONDS,
+        ):
+            return error_response(
+                "Too many requests. Wait a few minutes before asking for another email.",
+                http_status=status.HTTP_429_TOO_MANY_REQUESTS,
+            )
+
+        user = User.objects.filter(email__iexact=email).first()
         if user is not None:
             token = tokens.make_password_reset_token(user)
             send_password_reset_email.delay(user.email, token)
@@ -606,18 +683,25 @@ class PasswordResetConfirmView(APIView):
             return error_response("Invalid request.", serializer.errors)
 
         try:
-            uid = tokens.read_password_reset_token(serializer.validated_data["token"])
+            uid, fingerprint = tokens.read_password_reset_token(serializer.validated_data["token"])
         except signing.SignatureExpired:
             return error_response("Reset link has expired.")
         except signing.BadSignature:
             return error_response("Invalid reset link.")
 
         user = User.objects.filter(pk=uid).first()
-        if user is None:
-            return error_response("Invalid reset link.")
+        # The fingerprint is of the password the link was issued against, so a
+        # link that has already been used — or that predates any other change of
+        # password — no longer resolves.
+        if user is None or not tokens.password_fingerprint_matches(user, fingerprint):
+            return error_response("This reset link is no longer valid. Request a new one.")
 
         user.set_password(serializer.validated_data["password"])
         user.save(update_fields=["password", "updated_at"])
+        # A reset is how an account is taken back; every session opened before it
+        # goes with the old password.
+        _revoke_refresh_tokens(user)
+        _clear_login_failures(user.email)
         return success_response(message="Password has been reset. You can now log in.")
 
 

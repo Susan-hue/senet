@@ -22,6 +22,10 @@ repos:
     hooks:
       - id: bandit
         files: ^backend/
+        # The hook scans the whole backend tree from its own args; appending the
+        # staged paths on top makes bandit reject the invocation outright, so the
+        # scan never ran locally.
+        pass_filenames: false
         args: ["-r", "backend", "-c", "backend/pyproject.toml"]
         additional_dependencies: ["bandit[toml]"]
 
