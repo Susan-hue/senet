@@ -1,3 +1,4 @@
+import logging
 import uuid
 
 from django.conf import settings
@@ -5,6 +6,7 @@ from django.contrib.auth import authenticate, get_user_model
 from django.core import signing
 from django.core.cache import cache
 from django.db.models import Exists, OuterRef, ProtectedError, Q
+from kombu.exceptions import OperationalError
 from rest_framework import generics, status
 from rest_framework.permissions import SAFE_METHODS, AllowAny, IsAuthenticated
 from rest_framework.response import Response
@@ -66,6 +68,8 @@ from accounts.tasks import run_import_job, send_password_reset_email, send_verif
 from tenancy.scoping import set_current_institution
 
 User = get_user_model()
+
+logger = logging.getLogger(__name__)
 
 
 def _refresh_cookie_kwargs():
@@ -309,7 +313,9 @@ class LogoutView(APIView):
             try:
                 RefreshToken(raw).blacklist()
             except TokenError:
-                pass
+                # An already expired or blacklisted token still logs the caller
+                # out; it is worth a log line but never an error response.
+                logger.info("Logout presented a refresh token that could not be blacklisted.")
         response = success_response(message="Logout successful.")
         _clear_refresh_cookie(response)
         return response
@@ -754,7 +760,16 @@ class _BaseImportView(APIView):
             total_rows=row_estimate,
             created_by=request.user,
         )
-        run_import_job.delay(str(job.id), str(institution.id), self.kind, text)
+        try:
+            run_import_job.delay(str(job.id), str(institution.id), self.kind, text)
+        except OperationalError:
+            # The row promises work that no worker will ever pick up, so it is
+            # failed here rather than left pending forever.
+            logger.exception("Could not queue import job %s", job.id)
+            job.status = ImportJob.Status.FAILED
+            job.message = "The import could not be queued. Please try again."
+            job.save(update_fields=["status", "message", "updated_at"])
+            return error_response(job.message, http_status=status.HTTP_503_SERVICE_UNAVAILABLE)
         return Response(
             {
                 "status": "success",

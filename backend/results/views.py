@@ -1,5 +1,8 @@
+import logging
+
 from django.conf import settings
 from django.http import FileResponse, HttpResponse
+from kombu.exceptions import OperationalError
 from rest_framework import status
 from rest_framework.exceptions import NotFound
 from rest_framework.views import APIView
@@ -32,6 +35,8 @@ from results.serializers import (
 )
 from results.tasks import generate_export
 from tenancy.scoping import set_current_institution
+
+logger = logging.getLogger(__name__)
 
 
 class TenantAPIView(APIView):
@@ -229,7 +234,16 @@ def _export_or_offload(request, result, kind):
             filename=export_basename(result, extension),
             requested_by=request.user,
         )
-        generate_export.delay(str(job.id))
+        try:
+            generate_export.delay(str(job.id))
+        except OperationalError:
+            # Nothing will pick the job up, so it is failed here instead of
+            # leaving the caller polling a job that never moves.
+            logger.exception("Could not queue export job %s", job.id)
+            job.status = ExportJob.Status.FAILED
+            job.message = "The export could not be queued. Please try again."
+            job.save(update_fields=["status", "message", "updated_at"])
+            return error_response(job.message, http_status=status.HTTP_503_SERVICE_UNAVAILABLE)
         return success_response(
             ExportJobSerializer(job).data,
             "The class is large; the export is being generated. Poll the job to download it.",

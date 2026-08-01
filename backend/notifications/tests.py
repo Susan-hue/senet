@@ -12,6 +12,7 @@ from django.core import mail
 from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
+from kombu.exceptions import OperationalError
 from rest_framework.test import APITestCase
 
 from accounts.models import (
@@ -290,6 +291,32 @@ class SendTaskTests(NotificationTestBase):
 
     def test_a_missing_notification_is_a_no_op(self):
         self.assertIsNone(send_notification("00000000-0000-0000-0000-000000000000"))
+
+    def test_an_unreachable_broker_fails_the_row_without_breaking_the_caller(self):
+        """The trigger's transaction has already committed by the time the row is
+        handed to Celery, so a broker outage must land on the row, not on the
+        request that caused it."""
+        with mock.patch(
+            "notifications.tasks.send_notification.delay",
+            side_effect=OperationalError("broker down"),
+        ):
+            with self.captureOnCommitCallbacks(execute=True):
+                rows = notify_users(
+                    institution=self.inst,
+                    event=NotificationEvent.RESULT_RETURNED,
+                    users=[self.lecturer],
+                    context={
+                        "course_code": "CSC 101",
+                        "session": "2025/2026",
+                        "semester": "First",
+                        "reason": "Recheck.",
+                    },
+                )
+
+        for row in rows:
+            row.refresh_from_db()
+            self.assertEqual(row.status, NotificationStatus.FAILED)
+            self.assertIn("broker down", row.error)
 
 
 class ProviderTests(TestCase):

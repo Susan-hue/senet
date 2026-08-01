@@ -59,6 +59,7 @@ export function AdminLayout({
   const [navOpen, setNavOpen] = useState(false);
   const [session, setSession] = useState<Session | null>(null);
   const [semester, setSemester] = useState<Semester | null>(null);
+  const [scopeFailed, setScopeFailed] = useState(false);
   const location = useLocation();
 
   useEffect(() => {
@@ -68,6 +69,7 @@ export function AdminLayout({
   useEffect(() => {
     if (!accessToken) return;
     let active = true;
+    setScopeFailed(false);
     Promise.all([listSessions(accessToken), listSemesters(accessToken)])
       .then(([sessions, semesters]) => {
         if (!active) return;
@@ -85,7 +87,11 @@ export function AdminLayout({
             null,
         );
       })
-      .catch(() => undefined);
+      .catch(() => {
+        // A failed lookup must not render as "no active session" — the sidebar
+        // says the scope is unavailable instead.
+        if (active) setScopeFailed(true);
+      });
     return () => {
       active = false;
     };
@@ -136,6 +142,11 @@ export function AdminLayout({
                 {semester ? `${semester.name} · ` : ""}ends{" "}
                 {formatDate(semester?.end_date ?? session.end_date)}
               </span>
+            </div>
+          ) : scopeFailed ? (
+            <div className={styles.sessionCard}>
+              <span className={styles.sessionEyebrow}>Active session</span>
+              <span className={styles.sessionMeta}>Could not load the academic session.</span>
             </div>
           ) : null}
           <button type="button" className={styles.signOut} onClick={() => void logout()}>

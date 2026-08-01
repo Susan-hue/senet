@@ -1,3 +1,5 @@
+import logging
+
 from celery import shared_task
 from django.conf import settings
 
@@ -10,6 +12,8 @@ from accounts.importers import (
 )
 from accounts.models import ImportJob
 from tenancy.models import Institution
+
+logger = logging.getLogger(__name__)
 
 _IMPORTERS = {
     ImportJob.Kind.STUDENT: import_students,
@@ -71,6 +75,9 @@ def run_import_job(job_id, institution_id, kind, text):
         _fail_import(job, str(exc))
         return
     except Exception:  # noqa: BLE001 - any failure rolls back; record and surface it
+        # The job row only carries a message an admin can read; the traceback is
+        # the only way to find out what actually broke, so it goes to the log.
+        logger.exception("Import job %s (%s) failed unexpectedly", job.id, kind)
         _fail_import(job, "Import failed due to an unexpected error.")
         return
 

@@ -1,4 +1,5 @@
 import io
+from unittest import mock
 from urllib.parse import unquote
 
 from django.conf import settings
@@ -7,6 +8,7 @@ from django.core.cache import cache
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 from django.urls import reverse
+from kombu.exceptions import OperationalError
 from rest_framework import status
 from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.test import APITestCase
@@ -24,6 +26,7 @@ from accounts.models import (
     User,
 )
 from accounts.services import lecturer_can_access_course, validate_credit_load
+from accounts.tasks import run_import_job
 from config.celery import app as celery_app
 from tenancy.models import Institution
 from tenancy.scoping import clear_current_institution, set_current_institution
@@ -1135,6 +1138,39 @@ class BulkImportAsyncTests(APITestCase):
         self.assertEqual(poll.data["data"]["status"], "completed")
         self.assertEqual(poll.data["data"]["created_count"], 2)
         self.assertEqual(User.objects.filter(institution=self.inst, role=Role.STUDENT).count(), 2)
+
+    @override_settings(IMPORT_SYNC_MAX_ROWS=0)
+    def test_unreachable_broker_fails_the_job_instead_of_leaving_it_pending(self):
+        with mock.patch(
+            "accounts.views.run_import_job.delay", side_effect=OperationalError("broker down")
+        ):
+            response = self.client.post(
+                reverse("import-students"),
+                {"file": _csv_upload(VALID_STUDENTS)},
+                format="multipart",
+            )
+
+        self.assertEqual(response.status_code, status.HTTP_503_SERVICE_UNAVAILABLE)
+        self.assertEqual(response.data["status"], "error")
+        job = ImportJob.all_objects.get()
+        self.assertEqual(job.status, ImportJob.Status.FAILED)
+        self.assertIn("could not be queued", job.message)
+
+    def test_unexpected_importer_failure_is_recorded_on_the_job(self):
+        job = ImportJob.all_objects.create(
+            institution=self.inst,
+            kind=ImportJob.Kind.STUDENT,
+            status=ImportJob.Status.PENDING,
+        )
+        with mock.patch.dict(
+            "accounts.tasks._IMPORTERS",
+            {ImportJob.Kind.STUDENT: mock.Mock(side_effect=RuntimeError("database exploded"))},
+        ):
+            run_import_job(str(job.id), str(self.inst.id), ImportJob.Kind.STUDENT, VALID_STUDENTS)
+
+        job.refresh_from_db()
+        self.assertEqual(job.status, ImportJob.Status.FAILED)
+        self.assertIn("unexpected error", job.message)
 
 
 def _academic_chain(institution, dept_code="CSC", course_code="CSC 101", session_name="2024/2025"):
