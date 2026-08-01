@@ -14,6 +14,16 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * Normalise a `fetch` rejection. A caller-initiated cancellation is re-thrown
+ * untouched — reporting "check your connection" for a request the app aborted
+ * itself would be a lie the caller cannot tell apart from a real outage.
+ */
+function throwNetworkError(cause: unknown): never {
+  if (cause instanceof DOMException && cause.name === "AbortError") throw cause;
+  throw new ApiError("Network error. Check your connection and try again.", 0, null);
+}
+
 interface RequestOptions {
   method?: string;
   body?: unknown;
@@ -43,8 +53,8 @@ function authHeaders(token?: string | null, extra?: Record<string, string>) {
 async function send(path: string, init: RequestInit): Promise<Response> {
   try {
     return await fetch(`${API_BASE_URL}${path}`, { credentials: "include", ...init });
-  } catch {
-    throw new ApiError("Network error. Check your connection and try again.", 0, null);
+  } catch (cause) {
+    throwNetworkError(cause);
   }
 }
 

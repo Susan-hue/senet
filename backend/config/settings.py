@@ -109,6 +109,40 @@ elif DEBUG:
 else:
     raise ValueError("DATABASE_URL must be set when DEBUG is False")
 
+# Application loggers have no handler of their own, so anything they record
+# would otherwise fall through to the logging module's last-resort handler and
+# be dropped below WARNING. Background work (imports, exports, notification
+# delivery) reports its failures through these loggers, so they must reach the
+# platform's stdout log.
+#
+# The suite deliberately exercises those failure paths, so it stays quiet unless
+# LOG_LEVEL is set explicitly.
+LOG_LEVEL = config("LOG_LEVEL", default="CRITICAL" if TESTING else "INFO").upper()
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "verbose": {
+            "format": "{asctime} {levelname} {name} {message}",
+            "style": "{",
+        },
+    },
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "formatter": "verbose",
+            "level": LOG_LEVEL,
+        },
+    },
+    "root": {"handlers": ["console"], "level": "INFO"},
+    "loggers": {
+        # Unhandled exceptions in a view: logged with their traceback rather
+        # than only being rendered as a 500 envelope.
+        "django.request": {"handlers": ["console"], "level": "ERROR", "propagate": False},
+    },
+}
+
 AUTH_USER_MODEL = "accounts.User"
 
 AUTH_PASSWORD_VALIDATORS = [
@@ -156,6 +190,20 @@ if EMAIL_BACKEND == "django.core.mail.backends.smtp.EmailBackend":
 
 EMAIL_VERIFICATION_MAX_AGE = 60 * 60 * 24
 PASSWORD_RESET_MAX_AGE = 60 * 60
+
+# Login is unauthenticated by definition, so consecutive failures are counted per
+# address and lock that account out of the endpoint for a window. Counting the
+# address rather than the source IP keeps a NATed campus from locking itself out;
+# a successful login clears the counter.
+LOGIN_FAILURE_LIMIT = config("LOGIN_FAILURE_LIMIT", default=10, cast=int)
+LOGIN_FAILURE_WINDOW_SECONDS = config("LOGIN_FAILURE_WINDOW_SECONDS", default=900, cast=int)
+
+# Asking for a password reset mails a live link to somebody's inbox and costs a
+# real send, so it is capped per address like the verification resend.
+PASSWORD_RESET_REQUEST_LIMIT = config("PASSWORD_RESET_REQUEST_LIMIT", default=5, cast=int)
+PASSWORD_RESET_REQUEST_WINDOW_SECONDS = config(
+    "PASSWORD_RESET_REQUEST_WINDOW_SECONDS", default=900, cast=int
+)
 
 # Resending a verification email is unauthenticated and costs us a real send, so
 # it is capped per address. The frontend's countdown paces an honest user well

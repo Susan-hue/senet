@@ -6,6 +6,7 @@ student data. Output is DRAFT only: it is never written to a bank here.
 """
 
 import json
+import logging
 import urllib.error
 import urllib.request
 
@@ -14,6 +15,8 @@ from rest_framework.exceptions import ValidationError
 
 from cbt.models import QuestionType
 from cbt.services import _validate_question_payload
+
+logger = logging.getLogger(__name__)
 
 
 class AIProviderError(Exception):
@@ -122,7 +125,11 @@ def get_provider():
 
 def generate_draft_questions(*, notes, count, question_types):
     """Return DRAFT questions from the provider, normalized to the bank-question
-    shape. Nothing is persisted; malformed drafts are dropped."""
+    shape. Nothing is persisted; malformed drafts are dropped.
+
+    Dropping every draft is a provider failure, not an empty result: the caller
+    is told so rather than being handed an empty preview under a success
+    message."""
     count = min(count, settings.CBT_AI_MAX_QUESTIONS)
     raw_questions = get_provider().generate(notes=notes, count=count, question_types=question_types)
     drafts = []
@@ -130,6 +137,11 @@ def generate_draft_questions(*, notes, count, question_types):
         draft = _normalize_draft(raw)
         if draft is not None:
             drafts.append(draft)
+    dropped = len(raw_questions) - len(drafts)
+    if dropped:
+        logger.warning("Dropped %s of %s malformed AI drafts", dropped, len(raw_questions))
+    if raw_questions and not drafts:
+        raise AIProviderError("The AI provider returned no usable questions. Please try again.")
     return drafts
 
 

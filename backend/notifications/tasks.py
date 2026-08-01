@@ -89,6 +89,9 @@ def _record_failure(task, notification, provider_name, exc):
         # Celery's own control flow: the worker reschedules this task.
         raise
     except Exception:  # noqa: BLE001 - retries spent or the broker refused
+        logger.exception(
+            "Could not reschedule notification %s; settling on FAILED", notification.id
+        )
         notification.status = NotificationStatus.FAILED
         notification.save(update_fields=["status", "updated_at"])
         return NotificationStatus.FAILED.value

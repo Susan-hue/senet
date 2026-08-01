@@ -10,6 +10,7 @@ from unittest import mock, skipUnless
 from django.db import IntegrityError, connection, connections, transaction
 from django.test import TransactionTestCase, override_settings
 from django.urls import reverse
+from kombu.exceptions import OperationalError
 from openpyxl import load_workbook
 from rest_framework import status
 from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
@@ -1447,3 +1448,18 @@ class BroadsheetExportTests(ApprovalTestBase):
                 download = self.client.get(reverse("export-job-detail", args=[job_id]))
                 self.assertEqual(download.status_code, status.HTTP_200_OK)
                 self.assertEqual(download["Content-Type"], "application/pdf")
+
+    @override_settings(EXPORT_ASYNC_THRESHOLD=0)
+    def test_unreachable_broker_fails_the_export_job_instead_of_leaving_it_pending(self):
+        result = self.ratified()
+        self.client.force_authenticate(self.lecturer)
+        with mock.patch(
+            "results.views.generate_export.delay", side_effect=OperationalError("broker down")
+        ):
+            response = self.client.get(reverse("result-broadsheet", args=[result.id]))
+
+        self.assertEqual(response.status_code, status.HTTP_503_SERVICE_UNAVAILABLE)
+        self.assertEqual(response.data["status"], "error")
+        job = ExportJob.all_objects.get(result=result)
+        self.assertEqual(job.status, ExportJob.Status.FAILED)
+        self.assertIn("could not be queued", job.message)
