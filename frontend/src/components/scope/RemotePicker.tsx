@@ -60,7 +60,8 @@ export function RemotePicker({
     setLoading(true);
     setError(null);
     const timer = setTimeout(() => {
-      fetchOptionsRef.current(query.trim())
+      fetchOptionsRef
+        .current(query.trim())
         .then((r) => {
           if (active) setResult(r);
         })
@@ -178,10 +179,9 @@ export function RemotePicker({
                     type="button"
                     role="option"
                     aria-selected={o.value === value}
-                    className={[
-                      styles.popItem,
-                      o.value === value ? styles.popItemActive : "",
-                    ].join(" ")}
+                    className={[styles.popItem, o.value === value ? styles.popItemActive : ""].join(
+                      " ",
+                    )}
                     onClick={() => {
                       onPick(o);
                       setOpen(false);

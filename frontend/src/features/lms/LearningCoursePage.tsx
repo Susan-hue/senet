@@ -104,7 +104,10 @@ export function LearningCoursePage({ role }: { role: "lecturer" | "student" }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
-  const courseData = useAsyncData(() => (courseId ? getCourse(courseId, token) : Promise.resolve(null)), [token, courseId]);
+  const courseData = useAsyncData(
+    () => (courseId ? getCourse(courseId, token) : Promise.resolve(null)),
+    [token, courseId],
+  );
   const course = courseData.data as Course | null;
 
   const modulesData = useAsyncData(async () => {
@@ -116,7 +119,10 @@ export function LearningCoursePage({ role }: { role: "lecturer" | "student" }) {
     const modules = moduleResponse.data?.results ?? [];
     return Promise.all(
       modules.map(async (module) => {
-        const itemsResponse = await apiRequest<Page<ContentItemRow>>(`/api/v1/content/modules/${module.id}/items`, { token });
+        const itemsResponse = await apiRequest<Page<ContentItemRow>>(
+          `/api/v1/content/modules/${module.id}/items`,
+          { token },
+        );
         return {
           ...module,
           items: itemsResponse.data?.results ?? [],
@@ -178,7 +184,15 @@ export function LearningCoursePage({ role }: { role: "lecturer" | "student" }) {
   }
 
   async function handleCreateAnnouncement() {
-    if (!courseId || !token || !announcementTitle.trim() || !announcementBody.trim() || !sessionId || !semesterId) return;
+    if (
+      !courseId ||
+      !token ||
+      !announcementTitle.trim() ||
+      !announcementBody.trim() ||
+      !sessionId ||
+      !semesterId
+    )
+      return;
     setIsSubmitting(true);
     setStatusMessage(null);
     try {
@@ -206,7 +220,15 @@ export function LearningCoursePage({ role }: { role: "lecturer" | "student" }) {
   }
 
   async function handleCreateThread() {
-    if (!courseId || !token || !threadTitle.trim() || !threadBody.trim() || !sessionId || !semesterId) return;
+    if (
+      !courseId ||
+      !token ||
+      !threadTitle.trim() ||
+      !threadBody.trim() ||
+      !sessionId ||
+      !semesterId
+    )
+      return;
     setIsSubmitting(true);
     setStatusMessage(null);
     try {
@@ -271,12 +293,15 @@ export function LearningCoursePage({ role }: { role: "lecturer" | "student" }) {
         form.append("file", selectedFile);
       }
 
-      const response = await fetch(`${API_BASE_URL}/api/v1/content/modules/${selectedModuleId}/items`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-        body: form,
-        credentials: "include",
-      });
+      const response = await fetch(
+        `${API_BASE_URL}/api/v1/content/modules/${selectedModuleId}/items`,
+        {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+          body: form,
+          credentials: "include",
+        },
+      );
       let envelope: { message?: string } | null = null;
       try {
         envelope = await response.json();
@@ -318,7 +343,11 @@ export function LearningCoursePage({ role }: { role: "lecturer" | "student" }) {
     <div className={adminStyles.page}>
       <PageHeader
         title={course ? `${course.code} · ${course.title}` : "Course learning area"}
-        subtitle={course ? "Modules, announcements and discussions for this course." : "Loading the course workspace…"}
+        subtitle={
+          course
+            ? "Modules, announcements and discussions for this course."
+            : "Loading the course workspace…"
+        }
       />
 
       {(!sessionId || !semesterId) && course ? (
@@ -329,10 +358,16 @@ export function LearningCoursePage({ role }: { role: "lecturer" | "student" }) {
         />
       ) : null}
 
-      {(courseData.loading || modulesData.loading || announcementsData.loading || threadsData.loading) && !course ? (
+      {(courseData.loading ||
+        modulesData.loading ||
+        announcementsData.loading ||
+        threadsData.loading) &&
+      !course ? (
         <LoadingState label="Loading learning area…" />
       ) : null}
-      {courseData.error ? <ErrorState message={courseData.error} onRetry={courseData.reload} /> : null}
+      {courseData.error ? (
+        <ErrorState message={courseData.error} onRetry={courseData.reload} />
+      ) : null}
 
       {!course && !courseData.loading ? (
         <EmptyState
@@ -369,7 +404,11 @@ export function LearningCoursePage({ role }: { role: "lecturer" | "student" }) {
               <section className={styles.panel}>
                 <div className={styles.panelHead}>
                   <h2>Learning content</h2>
-                  {isLecturer ? <span className={styles.metaBadge}>Manage</span> : <span className={styles.metaBadge}>Browse</span>}
+                  {isLecturer ? (
+                    <span className={styles.metaBadge}>Manage</span>
+                  ) : (
+                    <span className={styles.metaBadge}>Browse</span>
+                  )}
                 </div>
                 {isLecturer ? (
                   <div className={styles.formCard}>
@@ -386,7 +425,12 @@ export function LearningCoursePage({ role }: { role: "lecturer" | "student" }) {
                       value={moduleDescription}
                       onChange={(event) => setModuleDescription(event.target.value)}
                     />
-                    <button type="button" className={styles.primaryButton} onClick={() => void handleCreateModule()} disabled={isSubmitting}>
+                    <button
+                      type="button"
+                      className={styles.primaryButton}
+                      onClick={() => void handleCreateModule()}
+                      disabled={isSubmitting}
+                    >
                       {isSubmitting ? "Saving…" : "Create module"}
                     </button>
                   </div>
@@ -428,7 +472,11 @@ export function LearningCoursePage({ role }: { role: "lecturer" | "student" }) {
                                   </a>
                                 ) : null}
                                 {!isLecturer ? (
-                                  <button type="button" className={styles.secondaryButton} onClick={() => void handleOpenItem(item.id)}>
+                                  <button
+                                    type="button"
+                                    className={styles.secondaryButton}
+                                    onClick={() => void handleOpenItem(item.id)}
+                                  >
                                     Mark as read
                                   </button>
                                 ) : null}
@@ -474,7 +522,11 @@ export function LearningCoursePage({ role }: { role: "lecturer" | "student" }) {
                       value={itemDescription}
                       onChange={(event) => setItemDescription(event.target.value)}
                     />
-                    <select className={styles.select} value={itemKind} onChange={(event) => setItemKind(event.target.value as ContentKind)}>
+                    <select
+                      className={styles.select}
+                      value={itemKind}
+                      onChange={(event) => setItemKind(event.target.value as ContentKind)}
+                    >
                       <option value="page">Lesson</option>
                       <option value="file">File</option>
                       <option value="link">Link</option>
@@ -488,7 +540,7 @@ export function LearningCoursePage({ role }: { role: "lecturer" | "student" }) {
                         onChange={(event) => setItemBody(event.target.value)}
                       />
                     ) : null}
-                    {(itemKind === "link" || itemKind === "video") ? (
+                    {itemKind === "link" || itemKind === "video" ? (
                       <input
                         className={styles.input}
                         placeholder="Link or embed URL"
@@ -503,7 +555,12 @@ export function LearningCoursePage({ role }: { role: "lecturer" | "student" }) {
                         onChange={(event) => setSelectedFile(event.target.files?.[0] ?? null)}
                       />
                     ) : null}
-                    <button type="button" className={styles.primaryButton} onClick={() => void handleCreateItem()} disabled={isSubmitting}>
+                    <button
+                      type="button"
+                      className={styles.primaryButton}
+                      onClick={() => void handleCreateItem()}
+                      disabled={isSubmitting}
+                    >
                       Save content item
                     </button>
                   </div>
@@ -524,8 +581,16 @@ export function LearningCoursePage({ role }: { role: "lecturer" | "student" }) {
                             <span>{contentKindLabel(item.kind)}</span>
                           </div>
                           <p>{item.description || item.body || "No summary yet."}</p>
-                          {item.file_url ? <a href={item.file_url} target="_blank" rel="noreferrer">Download material</a> : null}
-                          {item.url ? <a href={item.url} target="_blank" rel="noreferrer">Open link</a> : null}
+                          {item.file_url ? (
+                            <a href={item.file_url} target="_blank" rel="noreferrer">
+                              Download material
+                            </a>
+                          ) : null}
+                          {item.url ? (
+                            <a href={item.url} target="_blank" rel="noreferrer">
+                              Open link
+                            </a>
+                          ) : null}
                         </div>
                       )),
                     )}
@@ -556,13 +621,22 @@ export function LearningCoursePage({ role }: { role: "lecturer" | "student" }) {
                     value={announcementBody}
                     onChange={(event) => setAnnouncementBody(event.target.value)}
                   />
-                  <button type="button" className={styles.primaryButton} onClick={() => void handleCreateAnnouncement()} disabled={isSubmitting}>
+                  <button
+                    type="button"
+                    className={styles.primaryButton}
+                    onClick={() => void handleCreateAnnouncement()}
+                    disabled={isSubmitting}
+                  >
                     {isSubmitting ? "Posting…" : "Publish announcement"}
                   </button>
                 </div>
               ) : null}
               {announcements.length === 0 ? (
-                <EmptyState title="No announcements yet" hint="New course updates will show up here." icon={<LinkIcon size={22} />} />
+                <EmptyState
+                  title="No announcements yet"
+                  hint="New course updates will show up here."
+                  icon={<LinkIcon size={22} />}
+                />
               ) : (
                 <div className={styles.list}>
                   {announcements.map((announcement) => (
@@ -600,12 +674,21 @@ export function LearningCoursePage({ role }: { role: "lecturer" | "student" }) {
                   value={threadBody}
                   onChange={(event) => setThreadBody(event.target.value)}
                 />
-                <button type="button" className={styles.primaryButton} onClick={() => void handleCreateThread()} disabled={isSubmitting}>
+                <button
+                  type="button"
+                  className={styles.primaryButton}
+                  onClick={() => void handleCreateThread()}
+                  disabled={isSubmitting}
+                >
                   {isSubmitting ? "Posting…" : "Start thread"}
                 </button>
               </div>
               {threads.length === 0 ? (
-                <EmptyState title="No discussion threads yet" hint="Start the first conversation for this course." icon={<UsersIcon size={22} />} />
+                <EmptyState
+                  title="No discussion threads yet"
+                  hint="Start the first conversation for this course."
+                  icon={<UsersIcon size={22} />}
+                />
               ) : (
                 <div className={styles.list}>
                   {threads.map((thread) => (
@@ -621,9 +704,15 @@ export function LearningCoursePage({ role }: { role: "lecturer" | "student" }) {
                           className={styles.textarea}
                           placeholder="Write a reply"
                           value={replyBody[thread.id] ?? ""}
-                          onChange={(event) => setReplyBody((prev) => ({ ...prev, [thread.id]: event.target.value }))}
+                          onChange={(event) =>
+                            setReplyBody((prev) => ({ ...prev, [thread.id]: event.target.value }))
+                          }
                         />
-                        <button type="button" className={styles.secondaryButton} onClick={() => void handleCreateReply(thread.id)}>
+                        <button
+                          type="button"
+                          className={styles.secondaryButton}
+                          onClick={() => void handleCreateReply(thread.id)}
+                        >
                           Reply
                         </button>
                       </div>

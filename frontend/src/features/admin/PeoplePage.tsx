@@ -228,7 +228,9 @@ export function PeoplePage() {
                     <th>Name</th>
                     <th>Email</th>
                     <th>{role === "student" ? "Matric no." : "Role"}</th>
-                    <th>{role === "student" ? "Level" : role === "lecturer" ? "Rank" : "Department"}</th>
+                    <th>
+                      {role === "student" ? "Level" : role === "lecturer" ? "Rank" : "Department"}
+                    </th>
                     <th aria-label="Actions" />
                   </tr>
                 </thead>

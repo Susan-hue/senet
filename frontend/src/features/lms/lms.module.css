@@ -12,7 +12,9 @@
   padding: 1rem;
   text-align: left;
   cursor: pointer;
-  transition: border-color 180ms ease, transform 180ms ease;
+  transition:
+    border-color 180ms ease,
+    transform 180ms ease;
 }
 
 .courseCard:hover {

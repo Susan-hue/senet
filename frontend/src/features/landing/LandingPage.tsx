@@ -138,8 +138,8 @@ export function LandingPage() {
             <p className={styles.heroSub}>
               Senet is a full LMS for Nigerian universities — course content, lessons, discussions,
               assignments, computer-based testing, gradebook, results, and records. One platform
-              from enrollment through convocation, with the integrity and resilience your institution
-              requires.
+              from enrollment through convocation, with the integrity and resilience your
+              institution requires.
             </p>
             <div className={styles.heroActions}>
               <Link className={styles.primaryCta} to={authenticated ? "/app" : "/login"}>
@@ -185,8 +185,9 @@ export function LandingPage() {
           <p className={styles.sectionTitle}>Where Senet is different</p>
           <h2 className={styles.scopeTitle}>Built for Nigerian university realities.</h2>
           <p className={styles.scopeLead}>
-            Senet delivers everything you expect from a complete LMS — content delivery, assessments,
-            gradebook, discussions — with three strengths that set it apart in the Nigerian context.
+            Senet delivers everything you expect from a complete LMS — content delivery,
+            assessments, gradebook, discussions — with three strengths that set it apart in the
+            Nigerian context.
           </p>
           <div className={styles.primaryGrid}>
             {PRIMARY_FEATURES.map((feature) => (
