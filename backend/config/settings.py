@@ -191,6 +191,20 @@ if EMAIL_BACKEND == "django.core.mail.backends.smtp.EmailBackend":
 EMAIL_VERIFICATION_MAX_AGE = 60 * 60 * 24
 PASSWORD_RESET_MAX_AGE = 60 * 60
 
+# Login is unauthenticated by definition, so consecutive failures are counted per
+# address and lock that account out of the endpoint for a window. Counting the
+# address rather than the source IP keeps a NATed campus from locking itself out;
+# a successful login clears the counter.
+LOGIN_FAILURE_LIMIT = config("LOGIN_FAILURE_LIMIT", default=10, cast=int)
+LOGIN_FAILURE_WINDOW_SECONDS = config("LOGIN_FAILURE_WINDOW_SECONDS", default=900, cast=int)
+
+# Asking for a password reset mails a live link to somebody's inbox and costs a
+# real send, so it is capped per address like the verification resend.
+PASSWORD_RESET_REQUEST_LIMIT = config("PASSWORD_RESET_REQUEST_LIMIT", default=5, cast=int)
+PASSWORD_RESET_REQUEST_WINDOW_SECONDS = config(
+    "PASSWORD_RESET_REQUEST_WINDOW_SECONDS", default=900, cast=int
+)
+
 # Resending a verification email is unauthenticated and costs us a real send, so
 # it is capped per address. The frontend's countdown paces an honest user well
 # inside this; the cap is for everyone else.

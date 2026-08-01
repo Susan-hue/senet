@@ -51,6 +51,7 @@ class AuthAPITests(APITestCase):
         celery_app.conf.task_eager_propagates = True
 
     def setUp(self):
+        cache.clear()
         self.register_url = reverse("auth-register")
         self.login_url = reverse("auth-login")
         self.logout_url = reverse("auth-logout")
@@ -243,6 +244,118 @@ class AuthAPITests(APITestCase):
 
         self.assertEqual(self._login(password=PASSWORD).status_code, status.HTTP_401_UNAUTHORIZED)
         self.assertEqual(self._login(password=NEW_PASSWORD).status_code, status.HTTP_200_OK)
+
+    def _request_reset(self, email="user@example.com"):
+        mail.outbox.clear()
+        self.client.post(self.reset_url, {"email": email}, format="json")
+        return _token_from_outbox()
+
+    def test_a_reset_link_cannot_be_used_twice(self):
+        """The link is signed and short-lived, but that alone would let anyone who
+        reads the message later replay it for the rest of the hour."""
+        self._register()
+        self._verify_latest()
+        token = self._request_reset()
+
+        first = self.client.post(
+            self.reset_confirm_url, {"token": token, "password": NEW_PASSWORD}, format="json"
+        )
+        self.assertEqual(first.status_code, status.HTTP_200_OK)
+
+        replay = self.client.post(
+            self.reset_confirm_url,
+            {"token": token, "password": "ThirdPassword789!"},
+            format="json",
+        )
+        self.assertEqual(replay.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(replay.data["status"], "error")
+        self.assertEqual(self._login(password=NEW_PASSWORD).status_code, status.HTTP_200_OK)
+
+    def test_an_older_reset_link_stops_working_once_the_password_changes(self):
+        self._register()
+        self._verify_latest()
+        stale = self._request_reset()
+        fresh = self._request_reset()
+
+        self.client.post(
+            self.reset_confirm_url, {"token": fresh, "password": NEW_PASSWORD}, format="json"
+        )
+        response = self.client.post(
+            self.reset_confirm_url,
+            {"token": stale, "password": "ThirdPassword789!"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_password_reset_revokes_sessions_opened_with_the_old_password(self):
+        self._register()
+        self._verify_latest()
+        self._login()
+        stolen_refresh = self.client.cookies[self.cookie_name].value
+        token = self._request_reset()
+
+        self.client.post(
+            self.reset_confirm_url, {"token": token, "password": NEW_PASSWORD}, format="json"
+        )
+
+        self.client.cookies[self.cookie_name] = stolen_refresh
+        replay = self.client.post(self.refresh_url)
+        self.assertEqual(replay.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_password_reset_request_matches_the_address_case_insensitively(self):
+        self._register()
+        self._verify_latest()
+        mail.outbox.clear()
+
+        response = self.client.post(self.reset_url, {"email": "User@Example.com"}, format="json")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(mail.outbox), 1)
+
+    @override_settings(PASSWORD_RESET_REQUEST_LIMIT=2)
+    def test_password_reset_requests_are_capped_per_address(self):
+        self._register()
+        self._verify_latest()
+        mail.outbox.clear()
+
+        for _ in range(2):
+            allowed = self.client.post(self.reset_url, {"email": "user@example.com"}, format="json")
+            self.assertEqual(allowed.status_code, status.HTTP_200_OK)
+
+        blocked = self.client.post(self.reset_url, {"email": "user@example.com"}, format="json")
+
+        self.assertEqual(blocked.status_code, status.HTTP_429_TOO_MANY_REQUESTS)
+        self.assertEqual(len(mail.outbox), 2)
+
+    @override_settings(LOGIN_FAILURE_LIMIT=3)
+    def test_login_locks_out_after_repeated_failures(self):
+        self._register()
+        self._verify_latest()
+
+        for _ in range(3):
+            self.assertEqual(
+                self._login(password="WrongPassword1!").status_code,
+                status.HTTP_401_UNAUTHORIZED,
+            )
+
+        locked = self._login(password="WrongPassword1!")
+        self.assertEqual(locked.status_code, status.HTTP_429_TOO_MANY_REQUESTS)
+        # The lockout holds even once the guesser stumbles on the real password.
+        self.assertEqual(self._login().status_code, status.HTTP_429_TOO_MANY_REQUESTS)
+
+    @override_settings(LOGIN_FAILURE_LIMIT=3)
+    def test_a_successful_login_clears_earlier_failures(self):
+        self._register()
+        self._verify_latest()
+
+        self._login(password="WrongPassword1!")
+        self._login(password="WrongPassword1!")
+        self.assertEqual(self._login().status_code, status.HTTP_200_OK)
+
+        self._login(password="WrongPassword1!")
+        self._login(password="WrongPassword1!")
+        self.assertEqual(self._login().status_code, status.HTTP_200_OK)
 
 
 class ResendVerificationTests(APITestCase):
