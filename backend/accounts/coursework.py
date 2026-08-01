@@ -9,13 +9,26 @@ the same way — so it lives here once rather than three times.
 from rest_framework import serializers
 from rest_framework.exceptions import NotFound, PermissionDenied
 from rest_framework.permissions import BasePermission
-from rest_framework.views import APIView
 
 from accounts.models import Course, Role, Semester, Session
-from accounts.pagination import DirectoryPagination
-from accounts.responses import success_response
+from accounts.pagination import paginated_response as paginated
 from accounts.services import can_access_course, can_manage_course
-from tenancy.scoping import get_current_institution, set_current_institution
+from tenancy.serializers import TenantScopedSerializerMixin
+from tenancy.views import TenantAPIView
+
+__all__ = [
+    "CourseTermSerializer",
+    "IsCourseManager",
+    "IsCourseParticipant",
+    "MANAGER_ROLES",
+    "PARTICIPANT_ROLES",
+    "TenantAPIView",
+    "get_scoped",
+    "paginated",
+    "require_access",
+    "require_manager",
+    "resolve_course_term",
+]
 
 MANAGER_ROLES = (
     Role.LECTURER,
@@ -49,15 +62,7 @@ class IsCourseManager(BasePermission):
         return _is_member(request.user) and request.user.role in MANAGER_ROLES
 
 
-class TenantAPIView(APIView):
-    """Activate tenant scoping after DRF resolves the JWT user."""
-
-    def initial(self, request, *args, **kwargs):
-        super().initial(request, *args, **kwargs)
-        set_current_institution(getattr(request.user, "institution", None))
-
-
-class CourseTermSerializer(serializers.Serializer):
+class CourseTermSerializer(TenantScopedSerializerMixin, serializers.Serializer):
     """The course-term triple, with querysets bound to the caller's tenant.
 
     Binding the querysets is the tenant check: an id from another institution
@@ -65,18 +70,11 @@ class CourseTermSerializer(serializers.Serializer):
     permission check that might be written to assume otherwise.
     """
 
+    tenant_scoped_fields = {"course": Course, "session": Session, "semester": Semester}
+
     course = serializers.PrimaryKeyRelatedField(queryset=Course.objects.none())
     session = serializers.PrimaryKeyRelatedField(queryset=Session.objects.none())
     semester = serializers.PrimaryKeyRelatedField(queryset=Semester.objects.none())
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        institution = get_current_institution()
-        if institution is None:
-            return
-        self.fields["course"].queryset = Course.all_objects.filter(institution=institution)
-        self.fields["session"].queryset = Session.all_objects.filter(institution=institution)
-        self.fields["semester"].queryset = Semester.all_objects.filter(institution=institution)
 
     def validate(self, attrs):
         session = attrs.get("session")
@@ -140,10 +138,3 @@ def get_scoped(model, pk, user, *, select_related=(), message="Not found."):
     if row is None:
         raise NotFound(message)
     return row
-
-
-def paginated(request, view, qs, serializer_class, **serializer_kwargs):
-    paginator = DirectoryPagination()
-    page = paginator.paginate_queryset(qs, request, view=view)
-    rows = serializer_class(page, many=True, **serializer_kwargs).data
-    return success_response(paginator.get_paginated_response(rows).data)

@@ -65,7 +65,7 @@ from accounts.serializers import (
 )
 from accounts.services import assign_lecturer, enrol_student
 from accounts.tasks import run_import_job, send_password_reset_email, send_verification_email
-from tenancy.scoping import set_current_institution
+from tenancy.views import TenantScopedViewMixin
 
 User = get_user_model()
 
@@ -340,18 +340,10 @@ class EnvelopeMixin:
         return super().finalize_response(request, response, *args, **kwargs)
 
 
-class TenantActivationMixin:
-    """Activate tenant scoping from the DRF-authenticated user.
-
-    CurrentInstitutionMiddleware runs before DRF resolves the JWT user, so the
-    institution is set here (after authentication) so query scoping applies.
-    """
+class TenantActivationMixin(TenantScopedViewMixin):
+    """Scope a generic view's queryset to the DRF-authenticated user's tenant."""
 
     model = None
-
-    def initial(self, request, *args, **kwargs):
-        super().initial(request, *args, **kwargs)
-        set_current_institution(getattr(request.user, "institution", None))
 
     def get_queryset(self):
         return self.model._default_manager.all()

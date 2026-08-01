@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { Alert, Button } from "../../components";
 import {
@@ -11,7 +11,6 @@ import {
 } from "../../components/admin";
 import { ScopeGate, ScopeSteps } from "../../components/scope";
 import type { ScopeStep } from "../../components/scope";
-import { ApiError } from "../../services/api";
 import {
   createUser,
   getInstitutionConfig,
@@ -23,7 +22,8 @@ import {
 import { LEVEL_OPTIONS, PERSON_ROLE_OPTIONS, ROLE_META } from "../../types";
 import type { Department, Faculty, Person, Role } from "../../types";
 import { useAuth } from "../../hooks";
-import { useAsyncData, useDebounced } from "./useAsyncData";
+import { useAsyncAction, useAsyncData, useDebounced } from "./useAsyncData";
+import { useFacultyDepartmentFilter } from "./useDirectoryFilters";
 import { PageHeader, Pager, SearchBox, SelectInput, TextInput, firstError } from "./ui";
 import { PlusIcon } from "./adminIcons";
 import styles from "./admin.module.css";
@@ -44,8 +44,6 @@ export function PeoplePage() {
   const token = accessToken ?? "";
   const location = useLocation();
 
-  const [faculty, setFaculty] = useState("");
-  const [department, setDepartment] = useState("");
   const [role, setRole] = useState<Role | "">("");
   const [level, setLevel] = useState("");
   const [query, setQuery] = useState("");
@@ -58,16 +56,14 @@ export function PeoplePage() {
   );
   const [faculties, departments, config] = refData.data ?? [[], [], { lecturer_ranks: [] }];
 
-  const deptMap = useMemo(() => {
-    const m = new Map<string, Department>();
-    departments.forEach((d) => m.set(d.id, d));
-    return m;
-  }, [departments]);
-
-  const deptOptions = useMemo(
-    () => departments.filter((d) => d.faculty === faculty),
-    [departments, faculty],
-  );
+  const {
+    faculty,
+    department,
+    setDepartment,
+    departmentsById: deptMap,
+    departmentOptions: deptOptions,
+    pickFaculty,
+  } = useFacultyDepartmentFilter(departments);
 
   const scoped = Boolean(faculty && department && role);
   const doneCount = faculty ? (department ? (role ? 3 : 2) : 1) : 0;
@@ -96,11 +92,6 @@ export function PeoplePage() {
     (location.state as { create?: boolean } | null)?.create ? "new" : null,
   );
   const [toRemove, setToRemove] = useState<Person | null>(null);
-
-  function pickFaculty(id: string) {
-    setFaculty(id);
-    if (department && deptMap.get(department)?.faculty !== id) setDepartment("");
-  }
 
   const roleLabel = role ? ROLE_META[role as Role].label : "";
   const facultyName = faculties.find((f: Faculty) => f.id === faculty)?.name ?? "";
@@ -228,7 +219,9 @@ export function PeoplePage() {
                     <th>Name</th>
                     <th>Email</th>
                     <th>{role === "student" ? "Matric no." : "Role"}</th>
-                    <th>{role === "student" ? "Level" : role === "lecturer" ? "Rank" : "Department"}</th>
+                    <th>
+                      {role === "student" ? "Level" : role === "lecturer" ? "Rank" : "Department"}
+                    </th>
                     <th aria-label="Actions" />
                   </tr>
                 </thead>
@@ -375,16 +368,12 @@ function PersonModal({
   const [department, setDepartment] = useState(person?.department ?? defaults.department);
   const [level, setLevel] = useState(person?.current_level ? String(person.current_level) : "");
   const [rank, setRank] = useState(person?.rank ?? "");
-  const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
-  const [errors, setErrors] = useState<Record<string, string[]> | null>(null);
+  const save = useAsyncAction("Could not save the person.");
+  const { message, errors } = save;
 
   const deptOptions = departments.filter((d) => !faculty || d.faculty === faculty);
 
-  async function submit() {
-    setSaving(true);
-    setMessage(null);
-    setErrors(null);
+  function submit() {
     const body: Partial<Person> = {
       full_name: fullName.trim(),
       role,
@@ -393,19 +382,11 @@ function PersonModal({
       rank: role === "lecturer" && rank ? rank : null,
     };
     if (!isEdit) body.email = email.trim();
-    try {
+    void save.run(async () => {
       if (isEdit && person) await updateUser(person.id, body, token);
       else await createUser(body, token);
       onSaved();
-    } catch (err) {
-      if (err instanceof ApiError) {
-        setMessage(err.message);
-        setErrors(err.fieldErrors);
-      } else {
-        setMessage("Could not save the person.");
-      }
-      setSaving(false);
-    }
+    });
   }
 
   return (
@@ -417,7 +398,7 @@ function PersonModal({
           <Button variant="ghost" onClick={onClose}>
             Cancel
           </Button>
-          <Button loading={saving} onClick={submit}>
+          <Button loading={save.pending} onClick={submit}>
             {isEdit ? "Save changes" : "Add person"}
           </Button>
         </>
@@ -512,28 +493,21 @@ function RemovePerson({
   onClose: () => void;
   onDone: () => void;
 }) {
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  async function confirm() {
-    setLoading(true);
-    setError(null);
-    try {
-      await updateUser(person.id, { is_active: false }, token);
-      onDone();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not remove the person.");
-      setLoading(false);
-    }
-  }
+  const remove = useAsyncAction("Could not remove the person.");
   return (
     <ConfirmDialog
       title="Remove person"
       message={`Deactivate ${person.full_name}? They will be removed from the active directory and can no longer sign in. Their records are preserved.`}
       confirmLabel="Remove"
-      loading={loading}
-      error={error}
+      loading={remove.pending}
+      error={remove.message}
       onCancel={onClose}
-      onConfirm={confirm}
+      onConfirm={() =>
+        void remove.run(async () => {
+          await updateUser(person.id, { is_active: false }, token);
+          onDone();
+        })
+      }
     />
   );
 }

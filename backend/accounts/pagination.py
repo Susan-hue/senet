@@ -1,6 +1,8 @@
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 
+from accounts.responses import success_response
+
 
 class DirectoryPagination(PageNumberPagination):
     """Page-number pagination for large directory listings (users, courses).
@@ -23,3 +25,12 @@ class DirectoryPagination(PageNumberPagination):
                 "results": data,
             }
         )
+
+
+def paginated_response(request, view, qs, serializer_class, **serializer_kwargs):
+    """Serialize one page of ``qs`` inside the standard response envelope."""
+
+    paginator = DirectoryPagination()
+    page = paginator.paginate_queryset(qs, request, view=view)
+    rows = serializer_class(page, many=True, **serializer_kwargs).data
+    return success_response(paginator.get_paginated_response(rows).data)

@@ -9,11 +9,10 @@ import {
   Modal,
   SkeletonTable,
 } from "../../components/admin";
-import { ApiError } from "../../services/api";
 import * as api from "../../services/accounts";
 import type { Department, Faculty, Programme, Semester, Session } from "../../types";
 import { useAuth } from "../../hooks";
-import { useAsyncData } from "./useAsyncData";
+import { useAsyncAction, useAsyncData } from "./useAsyncData";
 import { PageHeader, TextInput, firstError } from "./ui";
 import { PlusIcon } from "./adminIcons";
 import styles from "./admin.module.css";
@@ -483,28 +482,16 @@ function EntityModal({
     end_date: (editing?.end_date as string) ?? "",
   }));
   const [isCurrent, setIsCurrent] = useState(Boolean(editing?.is_current));
-  const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
-  const [errors, setErrors] = useState<Record<string, string[]> | null>(null);
+  const saving = useAsyncAction("Could not save. Please try again.");
+  const { message, errors } = saving;
 
   const set = (k: string) => (v: string) => setF((prev) => ({ ...prev, [k]: v }));
 
-  async function submit() {
-    setSaving(true);
-    setMessage(null);
-    setErrors(null);
-    try {
+  function submit() {
+    void saving.run(async () => {
       await save();
       onSaved();
-    } catch (err) {
-      if (err instanceof ApiError) {
-        setMessage(err.message);
-        setErrors(err.fieldErrors);
-      } else {
-        setMessage("Could not save. Please try again.");
-      }
-      setSaving(false);
-    }
+    });
   }
 
   async function save() {
@@ -562,7 +549,7 @@ function EntityModal({
           <Button variant="ghost" onClick={onClose}>
             Cancel
           </Button>
-          <Button loading={saving} onClick={submit}>
+          <Button loading={saving.pending} onClick={submit}>
             {isEdit ? "Save changes" : "Create"}
           </Button>
         </>
@@ -659,27 +646,20 @@ function GenericDelete({
   onClose: () => void;
   onDone: () => void;
 }) {
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  async function confirm() {
-    setLoading(true);
-    setError(null);
-    try {
-      await spec.run(token);
-      onDone();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not delete this record.");
-      setLoading(false);
-    }
-  }
+  const remove = useAsyncAction("Could not delete this record.");
   return (
     <ConfirmDialog
       title={spec.title}
       message={spec.message}
-      loading={loading}
-      error={error}
+      loading={remove.pending}
+      error={remove.message}
       onCancel={onClose}
-      onConfirm={confirm}
+      onConfirm={() =>
+        void remove.run(async () => {
+          await spec.run(token);
+          onDone();
+        })
+      }
     />
   );
 }

@@ -1,4 +1,5 @@
-import { apiRequest } from "./api";
+import { apiRequest, withQuery } from "./api";
+import type { QueryParams } from "./api";
 import type {
   AssessmentGrade,
   AssessmentItem,
@@ -9,17 +10,6 @@ import type {
 import { EMPTY_PAGE } from "../types";
 
 const ASSESSMENTS = "/api/v1/assessments";
-
-type QueryParams = Record<string, string | number | undefined>;
-
-function withQuery(path: string, params: QueryParams) {
-  const search = new URLSearchParams();
-  Object.entries(params).forEach(([key, value]) => {
-    if (value !== undefined && value !== "") search.set(key, String(value));
-  });
-  const qs = search.toString();
-  return qs ? `${path}?${qs}` : path;
-}
 
 export interface ItemListParams {
   course?: string;

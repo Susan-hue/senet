@@ -10,7 +10,6 @@ import {
 } from "../../components/admin";
 import { ScopeGate, ScopeSteps } from "../../components/scope";
 import type { ScopeStep } from "../../components/scope";
-import { ApiError } from "../../services/api";
 import {
   createCourse,
   deleteCourse,
@@ -24,7 +23,8 @@ import {
 import { LEVEL_OPTIONS } from "../../types";
 import type { Course, Department, Faculty } from "../../types";
 import { useAuth } from "../../hooks";
-import { useAsyncData, useDebounced } from "./useAsyncData";
+import { useAsyncAction, useAsyncData, useDebounced } from "./useAsyncData";
+import { useFacultyDepartmentFilter } from "./useDirectoryFilters";
 import { PageHeader, Pager, SearchBox, SelectInput, TextInput, firstError } from "./ui";
 import { PlusIcon } from "./adminIcons";
 import styles from "./admin.module.css";
@@ -37,8 +37,6 @@ export function CoursesPage() {
   const token = accessToken ?? "";
   const location = useLocation();
 
-  const [faculty, setFaculty] = useState("");
-  const [department, setDepartment] = useState("");
   const [level, setLevel] = useState("");
   const [term, setTerm] = useState("");
   const [query, setQuery] = useState("");
@@ -57,16 +55,14 @@ export function CoursesPage() {
   );
   const [faculties, departments, sessions, semesters] = refData.data ?? [[], [], [], []];
 
-  const deptMap = useMemo(() => {
-    const m = new Map<string, Department>();
-    departments.forEach((d) => m.set(d.id, d));
-    return m;
-  }, [departments]);
-
-  const deptOptions = useMemo(
-    () => departments.filter((d) => d.faculty === faculty),
-    [departments, faculty],
-  );
+  const {
+    faculty,
+    department,
+    setDepartment,
+    departmentsById: deptMap,
+    departmentOptions: deptOptions,
+    pickFaculty,
+  } = useFacultyDepartmentFilter(departments);
 
   const sessionMap = useMemo(() => {
     const m = new Map<string, string>();
@@ -111,11 +107,6 @@ export function CoursesPage() {
     (location.state as { create?: boolean } | null)?.create ? "new" : null,
   );
   const [toDelete, setToDelete] = useState<Course | null>(null);
-
-  function pickFaculty(id: string) {
-    setFaculty(id);
-    if (department && deptMap.get(department)?.faculty !== id) setDepartment("");
-  }
 
   const facultyName = faculties.find((f: Faculty) => f.id === faculty)?.name ?? "";
   const departmentName = deptMap.get(department)?.name ?? "";
@@ -363,16 +354,12 @@ function CourseModal({
   );
   const [ca, setCa] = useState(course?.ca_weight != null ? String(course.ca_weight) : "");
   const [exam, setExam] = useState(course?.exam_weight != null ? String(course.exam_weight) : "");
-  const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
-  const [errors, setErrors] = useState<Record<string, string[]> | null>(null);
+  const save = useAsyncAction("Could not save the course.");
+  const { message, errors } = save;
 
   const deptOptions = departments.filter((d) => !faculty || d.faculty === faculty);
 
-  async function submit() {
-    setSaving(true);
-    setMessage(null);
-    setErrors(null);
+  function submit() {
     const body: Partial<Course> = {
       department,
       code: code.trim(),
@@ -382,19 +369,11 @@ function CourseModal({
       ca_weight: ca && exam ? Number(ca) : null,
       exam_weight: ca && exam ? Number(exam) : null,
     };
-    try {
+    void save.run(async () => {
       if (isEdit && course) await updateCourse(course.id, body, token);
       else await createCourse(body, token);
       onSaved();
-    } catch (err) {
-      if (err instanceof ApiError) {
-        setMessage(err.message);
-        setErrors(err.fieldErrors);
-      } else {
-        setMessage("Could not save the course.");
-      }
-      setSaving(false);
-    }
+    });
   }
 
   return (
@@ -406,7 +385,7 @@ function CourseModal({
           <Button variant="ghost" onClick={onClose}>
             Cancel
           </Button>
-          <Button loading={saving} onClick={submit}>
+          <Button loading={save.pending} onClick={submit}>
             {isEdit ? "Save changes" : "Create course"}
           </Button>
         </>
@@ -510,27 +489,20 @@ function DeleteCourse({
   onClose: () => void;
   onDeleted: () => void;
 }) {
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  async function confirm() {
-    setLoading(true);
-    setError(null);
-    try {
-      await deleteCourse(course.id, token);
-      onDeleted();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not delete the course.");
-      setLoading(false);
-    }
-  }
+  const remove = useAsyncAction("Could not delete the course.");
   return (
     <ConfirmDialog
       title="Delete course"
       message={`Delete ${course.code} — ${course.title}? This cannot be undone.`}
-      loading={loading}
-      error={error}
+      loading={remove.pending}
+      error={remove.message}
       onCancel={onClose}
-      onConfirm={confirm}
+      onConfirm={() =>
+        void remove.run(async () => {
+          await deleteCourse(course.id, token);
+          onDeleted();
+        })
+      }
     />
   );
 }

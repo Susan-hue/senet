@@ -1,10 +1,9 @@
 from rest_framework import status
 from rest_framework.exceptions import NotFound, PermissionDenied
 from rest_framework.permissions import IsAuthenticated
-from rest_framework.views import APIView
 from rest_framework_simplejwt.authentication import JWTAuthentication
 
-from accounts.pagination import DirectoryPagination
+from accounts.pagination import paginated_response
 from accounts.responses import error_response, success_response
 from auditor.authentication import AuditorTokenAuthentication
 from cbt import ai, ca, proctoring, services
@@ -36,22 +35,7 @@ from cbt.serializers import (
     WebcamCaptureSerializer,
     WebcamUploadSerializer,
 )
-from tenancy.scoping import set_current_institution
-
-
-class TenantAPIView(APIView):
-    """Activate tenant scoping after DRF resolves the JWT user."""
-
-    def initial(self, request, *args, **kwargs):
-        super().initial(request, *args, **kwargs)
-        set_current_institution(getattr(request.user, "institution", None))
-
-
-def _paginated(request, view, qs, serializer_class):
-    paginator = DirectoryPagination()
-    page = paginator.paginate_queryset(qs, request, view=view)
-    rows = serializer_class(page, many=True).data
-    return success_response(paginator.get_paginated_response(rows).data)
+from tenancy.views import TenantAPIView
 
 
 def _get_bank(user, pk):
@@ -114,7 +98,7 @@ class QuestionBankListCreateView(TenantAPIView):
         if course:
             qs = qs.filter(course_id=course)
         qs = [bank for bank in qs if services.can_manage_bank(request.user, bank.course)]
-        return _paginated(request, self, qs, QuestionBankSerializer)
+        return paginated_response(request, self, qs, QuestionBankSerializer)
 
     def post(self, request):
         serializer = CreateQuestionBankSerializer(data=request.data)
@@ -138,7 +122,7 @@ class BankQuestionsView(TenantAPIView):
         if not services.can_manage_bank(request.user, bank.course):
             raise PermissionDenied("You are not permitted to manage this bank.")
         qs = Question.all_objects.filter(bank=bank).order_by("created_at", "id")
-        return _paginated(request, self, qs, QuestionSerializer)
+        return paginated_response(request, self, qs, QuestionSerializer)
 
     def post(self, request, pk):
         bank = _get_bank(request.user, pk)
@@ -170,7 +154,7 @@ class ExamListCreateView(TenantAPIView):
             value = request.query_params.get(param)
             if value:
                 qs = qs.filter(**{f"{param}_id": value})
-        return _paginated(request, self, qs, ExamSerializer)
+        return paginated_response(request, self, qs, ExamSerializer)
 
     def post(self, request):
         serializer = CreateExamSerializer(data=request.data)
@@ -388,7 +372,7 @@ class FlagListView(TenantAPIView):
             value = request.query_params.get(param)
             if value:
                 qs = qs.filter(**{param: value})
-        return _paginated(request, self, qs, CheatingFlagSerializer)
+        return paginated_response(request, self, qs, CheatingFlagSerializer)
 
 
 class DismissFlagView(TenantAPIView):

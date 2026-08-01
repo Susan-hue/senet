@@ -1,10 +1,9 @@
 from django.db.models import Exists, OuterRef
 from rest_framework import status
 from rest_framework.exceptions import NotFound, PermissionDenied
-from rest_framework.views import APIView
 
 from accounts.models import CourseAssignment, Enrolment, Role
-from accounts.pagination import DirectoryPagination
+from accounts.pagination import DirectoryPagination, paginated_response
 from accounts.responses import error_response, success_response
 from accounts.services import lecturer_can_access_course
 from assessments import services
@@ -23,15 +22,7 @@ from assessments.serializers import (
     SubmissionSerializer,
     SubmissionUploadSerializer,
 )
-from tenancy.scoping import set_current_institution
-
-
-class TenantAPIView(APIView):
-    """Activate tenant scoping after DRF resolves the JWT user."""
-
-    def initial(self, request, *args, **kwargs):
-        super().initial(request, *args, **kwargs)
-        set_current_institution(getattr(request.user, "institution", None))
+from tenancy.views import TenantAPIView
 
 
 def _visible_items(user):
@@ -70,13 +61,6 @@ def _get_item(pk, user):
     return item
 
 
-def _paginated(request, view, qs, serializer_class, **serializer_kwargs):
-    paginator = DirectoryPagination()
-    page = paginator.paginate_queryset(qs, request, view=view)
-    rows = serializer_class(page, many=True, **serializer_kwargs).data
-    return success_response(paginator.get_paginated_response(rows).data)
-
-
 class ItemListCreateView(TenantAPIView):
     def get_permissions(self):
         if self.request.method == "POST":
@@ -89,7 +73,7 @@ class ItemListCreateView(TenantAPIView):
             value = request.query_params.get(param)
             if value:
                 qs = qs.filter(**{f"{param}_id": value})
-        return _paginated(request, self, qs, AssessmentItemSerializer)
+        return paginated_response(request, self, qs, AssessmentItemSerializer)
 
     def post(self, request):
         serializer = CreateItemSerializer(data=request.data)
@@ -152,7 +136,7 @@ class ItemSubmissionsView(TenantAPIView):
             .select_related("student")
             .order_by("submitted_at", "id")
         )
-        return _paginated(request, self, qs, SubmissionSerializer)
+        return paginated_response(request, self, qs, SubmissionSerializer)
 
 
 class GradeView(TenantAPIView):
@@ -185,7 +169,7 @@ class ItemGradesView(TenantAPIView):
             .select_related("item", "student", "submission")
             .order_by("student__full_name", "id")
         )
-        return _paginated(request, self, qs, GradeSerializer)
+        return paginated_response(request, self, qs, GradeSerializer)
 
 
 class MyGradesView(TenantAPIView):
@@ -201,7 +185,7 @@ class MyGradesView(TenantAPIView):
             value = request.query_params.get(param)
             if value:
                 qs = qs.filter(**{f"item__{param}_id": value})
-        return _paginated(request, self, qs, GradeSerializer)
+        return paginated_response(request, self, qs, GradeSerializer)
 
 
 class CaSummaryView(TenantAPIView):

@@ -1,4 +1,5 @@
-import { apiRequest, apiUpload } from "./api";
+import { apiRequest, apiUpload, withQuery } from "./api";
+import type { QueryParams } from "./api";
 import type {
   Course,
   CourseAssignment,
@@ -23,17 +24,6 @@ import type {
 import { EMPTY_PAGE } from "../types";
 
 const ACCOUNTS = "/api/v1/accounts";
-
-type QueryParams = Record<string, string | number | boolean | undefined>;
-
-function withQuery(path: string, params: QueryParams) {
-  const search = new URLSearchParams();
-  Object.entries(params).forEach(([key, value]) => {
-    if (value !== undefined && value !== "") search.set(key, String(value));
-  });
-  const qs = search.toString();
-  return qs ? `${path}?${qs}` : path;
-}
 
 export function getMe(token: string) {
   return apiRequest<CurrentUser>("/api/v1/auth/me", { token }).then((r) => r.data);

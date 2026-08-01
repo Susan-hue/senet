@@ -2,25 +2,19 @@ import { useEffect, useMemo, useState } from "react";
 import { Alert, Button } from "../../components";
 import { EmptyState, ErrorState, Modal, SkeletonTable } from "../../components/admin";
 import { useAuth } from "../../hooks";
-import { ApiError } from "../../services/api";
 import { listProgrammes } from "../../services/accounts";
 import { createExaminerReport, listExaminerReports } from "../../services/results";
 import type { Programme } from "../../types";
-import { useAsyncData } from "../admin/useAsyncData";
+import { useAsyncAction, useAsyncData } from "../admin/useAsyncData";
 import { PageHeader, Pager, SelectInput, TextInput, firstError } from "../admin/ui";
 import { ScopeBar } from "./ScopeBar";
 import { useScope } from "./useScope";
 import { PlusIcon } from "../admin/adminIcons";
 import adminStyles from "../admin/admin.module.css";
+import { formatDate } from "../../utils";
 import styles from "./board.module.css";
 
 const PAGE_SIZE = 25;
-
-function formatDate(value: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
-}
 
 /**
  * The NUC-required record that an external examiner audited a programme for a
@@ -198,24 +192,20 @@ function ExaminerModal({
   const [institution, setInstitution] = useState("");
   const [auditDate, setAuditDate] = useState("");
   const [remarks, setRemarks] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
-  const [errors, setErrors] = useState<Record<string, string[]> | null>(null);
+  const saving = useAsyncAction("Could not record the audit.");
+  const { message, errors } = saving;
   const [touched, setTouched] = useState(false);
 
   const missing =
     !programme || !session || !semester || !name.trim() || !institution.trim() || !auditDate;
 
-  async function submit() {
+  function submit() {
     setTouched(true);
     if (missing) {
-      setMessage("Fill in the examiner, their institution, the programme, term and audit date.");
+      saving.fail("Fill in the examiner, their institution, the programme, term and audit date.");
       return;
     }
-    setSaving(true);
-    setMessage(null);
-    setErrors(null);
-    try {
+    void saving.run(async () => {
       await createExaminerReport(
         {
           programme,
@@ -229,11 +219,7 @@ function ExaminerModal({
         token,
       );
       onSaved(name.trim());
-    } catch (err) {
-      setMessage(err instanceof ApiError ? err.message : "Could not record the audit.");
-      if (err instanceof ApiError) setErrors(err.fieldErrors);
-      setSaving(false);
-    }
+    });
   }
 
   const required = (value: string, key: string) =>
@@ -248,7 +234,7 @@ function ExaminerModal({
           <Button variant="ghost" onClick={onClose}>
             Cancel
           </Button>
-          <Button loading={saving} onClick={submit}>
+          <Button loading={saving.pending} onClick={submit}>
             Record audit
           </Button>
         </>

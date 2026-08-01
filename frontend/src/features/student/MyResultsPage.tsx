@@ -6,33 +6,15 @@ import { listSemesters, listSessions } from "../../services/accounts";
 import { listItems } from "../../services/assessments";
 import { myStanding } from "../../services/grading";
 import { STANDING_META } from "../../types";
-import type { Semester, Session, StandingCourseLine } from "../../types";
+import type { StandingCourseLine } from "../../types";
 import { useAsyncData } from "../admin/useAsyncData";
 import { PageHeader, StatCard } from "../admin/ui";
 import { AwardIcon } from "../admin/adminIcons";
+import { currentSemesterOf, formatNumber } from "../../utils";
 import adminStyles from "../admin/admin.module.css";
 import styles from "./student.module.css";
 
-function currentSemesterOf(session: Session | null, semesters: Semester[]) {
-  if (!session) return null;
-  const now = Date.now();
-  const inSession = semesters.filter((s) => s.session === session.id);
-  return (
-    inSession.find(
-      (s) => new Date(s.start_date).getTime() <= now && now <= new Date(s.end_date).getTime(),
-    ) ??
-    inSession[0] ??
-    null
-  );
-}
-
-function fmt(value: string | number | null | undefined) {
-  if (value === null || value === undefined || value === "") return "—";
-  const n = Number(value);
-  return Number.isNaN(n)
-    ? String(value)
-    : n.toLocaleString(undefined, { maximumFractionDigits: 2 });
-}
+const fmt = (value: string | number | null | undefined) => formatNumber(value, "—");
 
 export function MyResultsPage() {
   const { accessToken } = useAuth();

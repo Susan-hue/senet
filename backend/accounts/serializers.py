@@ -17,6 +17,7 @@ from accounts.models import (
     User,
 )
 from tenancy.scoping import get_current_institution
+from tenancy.serializers import TenantScopedSerializerMixin
 
 
 class RegisterSerializer(serializers.ModelSerializer):
@@ -95,7 +96,9 @@ class MeSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
-class UserAdminSerializer(serializers.ModelSerializer):
+class UserAdminSerializer(TenantScopedSerializerMixin, serializers.ModelSerializer):
+    tenant_scoped_fields = {"department": Department}
+
     department_name = serializers.CharField(source="department.name", read_only=True, default=None)
     rank = serializers.CharField(required=False, allow_blank=True, allow_null=True, max_length=100)
 
@@ -117,16 +120,6 @@ class UserAdminSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
         read_only_fields = ["id", "is_verified", "created_at", "updated_at"]
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        institution = get_current_institution()
-        if institution is not None:
-            self.fields["department"].queryset = Department.all_objects.filter(
-                institution=institution
-            )
-        else:
-            self.fields["department"].queryset = Department.objects.none()
 
     def validate_rank(self, value):
         return (value or "").strip()
@@ -349,7 +342,9 @@ class CourseSerializer(serializers.ModelSerializer):
         return attrs
 
 
-class EnrolmentSerializer(serializers.ModelSerializer):
+class EnrolmentSerializer(TenantScopedSerializerMixin, serializers.ModelSerializer):
+    tenant_scoped_fields = {"student": (User, {"role": Role.STUDENT})}
+
     institution = serializers.PrimaryKeyRelatedField(read_only=True)
     student_name = serializers.CharField(source="student.full_name", read_only=True)
     student_identifier = serializers.CharField(source="student.identifier", read_only=True)
@@ -370,18 +365,10 @@ class EnrolmentSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = READ_ONLY_AUDIT
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        institution = get_current_institution()
-        if institution is not None:
-            self.fields["student"].queryset = User.objects.filter(
-                institution=institution, role=Role.STUDENT
-            )
-        else:
-            self.fields["student"].queryset = User.objects.none()
 
+class CourseAssignmentSerializer(TenantScopedSerializerMixin, serializers.ModelSerializer):
+    tenant_scoped_fields = {"lecturer": (User, {"role": Role.LECTURER})}
 
-class CourseAssignmentSerializer(serializers.ModelSerializer):
     institution = serializers.PrimaryKeyRelatedField(read_only=True)
     # Denormalised display fields so list screens don't have to fetch the
     # whole user/course directories just to label a row.
@@ -405,16 +392,6 @@ class CourseAssignmentSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
         read_only_fields = READ_ONLY_AUDIT
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        institution = get_current_institution()
-        if institution is not None:
-            self.fields["lecturer"].queryset = User.objects.filter(
-                institution=institution, role=Role.LECTURER
-            )
-        else:
-            self.fields["lecturer"].queryset = User.objects.none()
 
 
 class ImportUploadSerializer(serializers.Serializer):

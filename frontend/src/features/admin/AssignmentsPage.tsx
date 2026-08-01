@@ -16,9 +16,10 @@ import {
   listUsers,
 } from "../../services/accounts";
 import { LEVEL_OPTIONS } from "../../types";
-import type { CourseAssignment, Department, Faculty } from "../../types";
+import type { CourseAssignment, Faculty } from "../../types";
 import { useAuth } from "../../hooks";
-import { useAsyncData, useDebounced } from "./useAsyncData";
+import { useAsyncAction, useAsyncData, useDebounced } from "./useAsyncData";
+import { useFacultyDepartmentFilter } from "./useDirectoryFilters";
 import { PageHeader, Pager, SearchBox, SelectInput } from "./ui";
 import styles from "./admin.module.css";
 
@@ -30,8 +31,6 @@ export function AssignmentsPage() {
   const { accessToken } = useAuth();
   const token = accessToken ?? "";
 
-  const [faculty, setFaculty] = useState("");
-  const [department, setDepartment] = useState("");
   const [term, setTerm] = useState("");
 
   const refData = useAsyncData(
@@ -46,16 +45,14 @@ export function AssignmentsPage() {
   );
   const [faculties, departments, sessions, semesters] = refData.data ?? [[], [], [], []];
 
-  const deptMap = useMemo(() => {
-    const m = new Map<string, Department>();
-    departments.forEach((d) => m.set(d.id, d));
-    return m;
-  }, [departments]);
-
-  const deptOptions = useMemo(
-    () => departments.filter((d) => d.faculty === faculty),
-    [departments, faculty],
-  );
+  const {
+    faculty,
+    department,
+    setDepartment,
+    departmentsById: deptMap,
+    departmentOptions: deptOptions,
+    pickFaculty,
+  } = useFacultyDepartmentFilter(departments);
 
   const sessionMap = useMemo(() => {
     const m = new Map<string, string>();
@@ -99,11 +96,6 @@ export function AssignmentsPage() {
   const assignments = data?.results ?? [];
 
   const [toRemove, setToRemove] = useState<CourseAssignment | null>(null);
-
-  function pickFaculty(id: string) {
-    setFaculty(id);
-    if (department && deptMap.get(department)?.faculty !== id) setDepartment("");
-  }
 
   const facultyName = faculties.find((f: Faculty) => f.id === faculty)?.name ?? "";
   const departmentName = deptMap.get(department)?.name ?? "";
@@ -448,28 +440,21 @@ function UnassignDialog({
   onClose: () => void;
   onDone: () => void;
 }) {
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  async function confirm() {
-    setLoading(true);
-    setError(null);
-    try {
-      await deleteAssignment(assignment.id, token);
-      onDone();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not remove the assignment.");
-      setLoading(false);
-    }
-  }
+  const remove = useAsyncAction("Could not remove the assignment.");
   return (
     <ConfirmDialog
       title="Remove assignment"
       message={`Unassign ${lecturerName} from ${courseCode}?`}
       confirmLabel="Unassign"
-      loading={loading}
-      error={error}
+      loading={remove.pending}
+      error={remove.message}
       onCancel={onClose}
-      onConfirm={confirm}
+      onConfirm={() =>
+        void remove.run(async () => {
+          await deleteAssignment(assignment.id, token);
+          onDone();
+        })
+      }
     />
   );
 }

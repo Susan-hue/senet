@@ -31,36 +31,57 @@ interface RequestOptions {
   signal?: AbortSignal;
 }
 
-export async function apiRequest<T>(
-  path: string,
-  options: RequestOptions = {},
-): Promise<ApiEnvelope<T>> {
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (options.token) headers["Authorization"] = `Bearer ${options.token}`;
+export type QueryParams = Record<string, string | number | boolean | undefined>;
 
-  let response: Response;
+/** Append the defined, non-empty params to `path` as a query string. */
+export function withQuery(path: string, params: QueryParams | object): string {
+  const search = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== "") search.set(key, String(value));
+  });
+  const qs = search.toString();
+  return qs ? `${path}?${qs}` : path;
+}
+
+function authHeaders(token?: string | null, extra?: Record<string, string>) {
+  const headers: Record<string, string> = { ...extra };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  return headers;
+}
+
+/** Every network-level failure surfaces as one ApiError, never a raw TypeError. */
+async function send(path: string, init: RequestInit): Promise<Response> {
   try {
-    response = await fetch(`${API_BASE_URL}${path}`, {
-      method: options.method ?? "GET",
-      headers,
-      credentials: "include",
-      body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
-      signal: options.signal,
-    });
+    return await fetch(`${API_BASE_URL}${path}`, { credentials: "include", ...init });
   } catch (cause) {
     throwNetworkError(cause);
   }
+}
 
-  let envelope: ApiEnvelope<T> | null = null;
+async function readEnvelope<T>(response: Response): Promise<ApiEnvelope<T> | null> {
   try {
-    envelope = (await response.json()) as ApiEnvelope<T>;
+    return (await response.json()) as ApiEnvelope<T>;
   } catch {
-    envelope = null;
+    return null;
   }
+}
+
+/**
+ * Unwrap a response the API promised to envelope: a body that is missing,
+ * unreadable or flagged as an error becomes an ApiError carrying the status and
+ * any field errors.
+ */
+async function envelopeOrThrow<T>(
+  response: Response,
+  messages: { failed: string; error: string },
+): Promise<ApiEnvelope<T>> {
+  const envelope = await readEnvelope<T>(response);
 
   if (!envelope) {
     throw new ApiError(
-      response.ok ? "Unexpected response from the server." : `Request failed (${response.status}).`,
+      response.ok
+        ? "Unexpected response from the server."
+        : `${messages.failed} (${response.status}).`,
       response.status,
       null,
     );
@@ -68,13 +89,30 @@ export async function apiRequest<T>(
 
   if (!response.ok || envelope.status === "error") {
     throw new ApiError(
-      envelope.message || "Something went wrong. Please try again.",
+      envelope.message || messages.error,
       response.status,
       envelope.errors ?? null,
     );
   }
 
   return envelope;
+}
+
+export async function apiRequest<T>(
+  path: string,
+  options: RequestOptions = {},
+): Promise<ApiEnvelope<T>> {
+  const response = await send(path, {
+    method: options.method ?? "GET",
+    headers: authHeaders(options.token, { "Content-Type": "application/json" }),
+    body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
+    signal: options.signal,
+  });
+
+  return envelopeOrThrow<T>(response, {
+    failed: "Request failed",
+    error: "Something went wrong. Please try again.",
+  });
 }
 
 export interface DownloadedFile {
@@ -100,28 +138,11 @@ export async function requestFileOrJob<J>(
   token?: string | null,
   fallbackName = "download",
 ): Promise<{ file: DownloadedFile } | { job: J }> {
-  const headers: Record<string, string> = {};
-  if (token) headers["Authorization"] = `Bearer ${token}`;
-
-  let response: Response;
-  try {
-    response = await fetch(`${API_BASE_URL}${path}`, {
-      method: "GET",
-      headers,
-      credentials: "include",
-    });
-  } catch (cause) {
-    throwNetworkError(cause);
-  }
+  const response = await send(path, { method: "GET", headers: authHeaders(token) });
 
   const contentType = response.headers.get("Content-Type") ?? "";
   if (contentType.includes("application/json")) {
-    let envelope: ApiEnvelope<J> | null = null;
-    try {
-      envelope = (await response.json()) as ApiEnvelope<J>;
-    } catch {
-      envelope = null;
-    }
+    const envelope = await readEnvelope<J>(response);
     if (!envelope || !response.ok || envelope.status === "error") {
       throw new ApiError(
         envelope?.message || `Export failed (${response.status}).`,
@@ -157,47 +178,18 @@ export async function apiUpload<T>(
   token?: string | null,
   signal?: AbortSignal,
 ): Promise<ApiEnvelope<T>> {
-  const headers: Record<string, string> = {};
-  if (token) headers["Authorization"] = `Bearer ${token}`;
-
   const form = new FormData();
   form.append("file", file);
 
-  let response: Response;
-  try {
-    response = await fetch(`${API_BASE_URL}${path}`, {
-      method: "POST",
-      headers,
-      credentials: "include",
-      body: form,
-      signal,
-    });
-  } catch (cause) {
-    throwNetworkError(cause);
-  }
+  const response = await send(path, {
+    method: "POST",
+    headers: authHeaders(token),
+    body: form,
+    signal,
+  });
 
-  let envelope: ApiEnvelope<T> | null = null;
-  try {
-    envelope = (await response.json()) as ApiEnvelope<T>;
-  } catch {
-    envelope = null;
-  }
-
-  if (!envelope) {
-    throw new ApiError(
-      response.ok ? "Unexpected response from the server." : `Upload failed (${response.status}).`,
-      response.status,
-      null,
-    );
-  }
-
-  if (!response.ok || envelope.status === "error") {
-    throw new ApiError(
-      envelope.message || "The import could not be processed.",
-      response.status,
-      envelope.errors ?? null,
-    );
-  }
-
-  return envelope;
+  return envelopeOrThrow<T>(response, {
+    failed: "Upload failed",
+    error: "The import could not be processed.",
+  });
 }
