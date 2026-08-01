@@ -21,6 +21,9 @@ module.exports = {
     "plugin:jsx-a11y/recommended",
     "prettier",
   ],
+  rules: {
+    "jsx-a11y/aria-role": ["error", { ignoreNonDOM: true }],
+  },
   ignorePatterns: ["dist", "node_modules"],
   settings: {
     react: {
