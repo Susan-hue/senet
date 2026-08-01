@@ -22,7 +22,8 @@ function currentSemesterOf(session: Session | null, semesters: Semester[]) {
   const inSession = semesters.filter((item) => item.session === session.id);
   return (
     inSession.find(
-      (item) => new Date(item.start_date).getTime() <= now && now <= new Date(item.end_date).getTime(),
+      (item) =>
+        new Date(item.start_date).getTime() <= now && now <= new Date(item.end_date).getTime(),
     ) ??
     inSession[0] ??
     null
@@ -53,39 +54,36 @@ export function LearningCoursesPage({ role }: { role: "lecturer" | "student" }) 
     ? (sessionSemesters.find((item: Semester) => item.id === semesterId) ?? null)
     : currentSemesterOf(session, semesters);
 
-  const rosterData = useAsyncData<Page<CourseAssignment> | Page<Enrolment>>(
-    async () => {
-      if (!session || !semester) {
-        return {
-          count: 0,
-          page: 1,
-          page_size: 0,
-          total_pages: 0,
-          results: [],
-        } as Page<CourseAssignment>;
-      }
-      if (role === "lecturer") {
-        const response = await listAssignments(token, {
-          session: session.id,
-          semester: semester.id,
-          page_size: 100,
-        });
-        return response;
-      }
-      const response = await listEnrolments(token, {
+  const rosterData = useAsyncData<Page<CourseAssignment> | Page<Enrolment>>(async () => {
+    if (!session || !semester) {
+      return {
+        count: 0,
+        page: 1,
+        page_size: 0,
+        total_pages: 0,
+        results: [],
+      } as Page<CourseAssignment>;
+    }
+    if (role === "lecturer") {
+      const response = await listAssignments(token, {
         session: session.id,
         semester: semester.id,
+        page_size: 100,
       });
-      return {
-        count: response.length,
-        page: 1,
-        page_size: response.length,
-        total_pages: 1,
-        results: response,
-      } as Page<Enrolment>;
-    },
-    [token, role, session?.id, semester?.id],
-  );
+      return response;
+    }
+    const response = await listEnrolments(token, {
+      session: session.id,
+      semester: semester.id,
+    });
+    return {
+      count: response.length,
+      page: 1,
+      page_size: response.length,
+      total_pages: 1,
+      results: response,
+    } as Page<Enrolment>;
+  }, [token, role, session?.id, semester?.id]);
 
   const courseData = useAsyncData(
     () => (token ? listCourses(token, { page_size: 200 }) : Promise.resolve(null)),
@@ -106,7 +104,8 @@ export function LearningCoursesPage({ role }: { role: "lecturer" | "student" }) 
     return (rosterData.data as Page<Enrolment>).results ?? [];
   }, [rosterData.data, role]);
 
-  const courseLabel = role === "lecturer" ? "courses assigned to you" : "courses you are enrolled in";
+  const courseLabel =
+    role === "lecturer" ? "courses assigned to you" : "courses you are enrolled in";
 
   return (
     <div className={adminStyles.page}>
@@ -145,7 +144,9 @@ export function LearningCoursesPage({ role }: { role: "lecturer" | "student" }) 
         <ErrorState message={courseData.error} onRetry={courseData.reload} />
       ) : entries.length === 0 ? (
         <EmptyState
-          title={role === "lecturer" ? "No courses assigned this term" : "No courses enrolled this term"}
+          title={
+            role === "lecturer" ? "No courses assigned this term" : "No courses enrolled this term"
+          }
           hint={
             role === "lecturer"
               ? "When a course is assigned to you for the current session and semester, it will appear here."
@@ -160,15 +161,18 @@ export function LearningCoursesPage({ role }: { role: "lecturer" | "student" }) 
               role === "lecturer"
                 ? (entry as CourseAssignment)
                 : courseById.get((entry as Enrolment).course);
-            const courseId = role === "lecturer" ? (entry as CourseAssignment).course : (entry as Enrolment).course;
+            const courseId =
+              role === "lecturer"
+                ? (entry as CourseAssignment).course
+                : (entry as Enrolment).course;
             const courseCode =
               role === "lecturer"
                 ? (entry as CourseAssignment).course_code
-                : (course as Course | undefined)?.code ?? "Course";
+                : ((course as Course | undefined)?.code ?? "Course");
             const courseTitle =
               role === "lecturer"
                 ? (entry as CourseAssignment).course_title
-                : (course as Course | undefined)?.title ?? "Course";
+                : ((course as Course | undefined)?.title ?? "Course");
             return (
               <button
                 key={courseId}

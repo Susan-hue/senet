@@ -65,10 +65,7 @@ export function MyCoursesPage() {
         : Promise.resolve(null),
     [token, session?.id, semester?.id],
   );
-  const termAssignments = useMemo(
-    () => assignmentData.data?.results ?? [],
-    [assignmentData.data],
-  );
+  const termAssignments = useMemo(() => assignmentData.data?.results ?? [], [assignmentData.data]);
 
   const resultByCourse = useMemo(() => {
     const map = new Map<string, CourseResult>();

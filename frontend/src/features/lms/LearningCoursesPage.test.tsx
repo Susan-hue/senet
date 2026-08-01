@@ -24,8 +24,20 @@ import { LearningCoursesPage } from "./LearningCoursesPage";
 describe("LearningCoursesPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    listAssignments.mockResolvedValue({ count: 0, page: 1, page_size: 25, total_pages: 1, results: [] } as Page<never>);
-    listCourses.mockResolvedValue({ count: 0, page: 1, page_size: 25, total_pages: 1, results: [] } as Page<never>);
+    listAssignments.mockResolvedValue({
+      count: 0,
+      page: 1,
+      page_size: 25,
+      total_pages: 1,
+      results: [],
+    } as Page<never>);
+    listCourses.mockResolvedValue({
+      count: 0,
+      page: 1,
+      page_size: 25,
+      total_pages: 1,
+      results: [],
+    } as Page<never>);
     listEnrolments.mockResolvedValue([]);
   });
 
