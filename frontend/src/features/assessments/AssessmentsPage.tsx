@@ -7,44 +7,13 @@ import { ApiError } from "../../services/api";
 import { getCourse, listAssignments, listSemesters, listSessions } from "../../services/accounts";
 import { caSummary, createItem, listItems } from "../../services/assessments";
 import { ASSESSMENT_KIND_META, ASSESSMENT_KIND_OPTIONS } from "../../types";
-import type { AssessmentItem, CaSummaryRow, Course, Page, Semester, Session } from "../../types";
-import { useAsyncData } from "../admin/useAsyncData";
+import type { AssessmentItem, CaSummaryRow, Course, Page } from "../../types";
+import { useAsyncAction, useAsyncData } from "../admin/useAsyncData";
 import { PageHeader, Pager, SelectInput, TextInput, firstError } from "../admin/ui";
 import { ClipboardIcon } from "../admin/adminIcons";
+import { currentSemesterOf, formatDateTime, formatNumber } from "../../utils";
 import adminStyles from "../admin/admin.module.css";
 import styles from "./assessments.module.css";
-
-function currentSemesterOf(session: Session | null, semesters: Semester[]) {
-  if (!session) return null;
-  const now = Date.now();
-  const inSession = semesters.filter((s) => s.session === session.id);
-  return (
-    inSession.find(
-      (s) => new Date(s.start_date).getTime() <= now && now <= new Date(s.end_date).getTime(),
-    ) ??
-    inSession[0] ??
-    null
-  );
-}
-
-export function fmtPoints(value: string | number) {
-  const n = Number(value);
-  return Number.isNaN(n)
-    ? String(value)
-    : n.toLocaleString(undefined, { maximumFractionDigits: 2 });
-}
-
-export function fmtDateTime(value: string) {
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return value;
-  return d.toLocaleString(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
 
 export function AssessmentsPage() {
   const { accessToken } = useAuth();
@@ -194,7 +163,7 @@ export function AssessmentsPage() {
                 <p className={styles.budgetSub}>
                   {course.code} grades CA out of <strong>{caBudget}</strong> of 100 course points
                   (exam covers the remaining {Number(course.effective_exam_weight)}). Items below
-                  claim <strong>{fmtPoints(weightUsed)}</strong> of those {caBudget} points — the
+                  claim <strong>{formatNumber(weightUsed)}</strong> of those {caBudget} points — the
                   server rejects any item that would push the total past the budget.
                 </p>
               </div>
@@ -203,12 +172,12 @@ export function AssessmentsPage() {
             <div
               className={styles.budgetBar}
               role="img"
-              aria-label={`CA weight used: ${fmtPoints(weightUsed)} of ${caBudget}`}
+              aria-label={`CA weight used: ${formatNumber(weightUsed)} of ${caBudget}`}
             >
               <span className={styles.budgetFill} style={{ width: `${budgetPct}%` }} />
             </div>
             <span className={styles.budgetLegend}>
-              {fmtPoints(weightUsed)} / {caBudget} points allocated
+              {formatNumber(weightUsed)} / {caBudget} points allocated
             </span>
           </section>
 
@@ -245,9 +214,9 @@ export function AssessmentsPage() {
                           <td>
                             <Badge tone={kind.tone}>{kind.label}</Badge>
                           </td>
-                          <td className={adminStyles.mono}>{fmtPoints(item.weight)} pts</td>
-                          <td className={adminStyles.mono}>{fmtPoints(item.max_score)}</td>
-                          <td className={adminStyles.cellMuted}>{fmtDateTime(item.due_date)}</td>
+                          <td className={adminStyles.mono}>{formatNumber(item.weight)} pts</td>
+                          <td className={adminStyles.mono}>{formatNumber(item.max_score)}</td>
+                          <td className={adminStyles.cellMuted}>{formatDateTime(item.due_date)}</td>
                           <td className={adminStyles.rowActions}>
                             <button
                               type="button"
@@ -296,7 +265,7 @@ export function AssessmentsPage() {
                           {row.student_identifier}
                         </td>
                         <td className={adminStyles.cellStrong}>{row.student_name}</td>
-                        <td className={adminStyles.mono}>{fmtPoints(row.ca_score)}</td>
+                        <td className={adminStyles.mono}>{formatNumber(row.ca_score)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -354,26 +323,21 @@ function CreateItemModal({
   const [weight, setWeight] = useState("");
   const [maxScore, setMaxScore] = useState("");
   const [dueDate, setDueDate] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
-  const [errors, setErrors] = useState<Record<string, string[]> | null>(null);
+  const save = useAsyncAction("Could not create the assessment item.");
+  const { message, errors } = save;
 
-  async function submit() {
+  function submit() {
     const missing: Record<string, string[]> = {};
     if (!title.trim()) missing.title = ["A title is required."];
     if (!weight.trim()) missing.weight = ["A weight is required."];
     if (!maxScore.trim()) missing.max_score = ["A maximum score is required."];
     if (!dueDate) missing.due_date = ["A due date is required."];
     if (Object.keys(missing).length > 0) {
-      setErrors(missing);
-      setMessage(null);
+      save.fail(missing);
       return;
     }
 
-    setSaving(true);
-    setMessage(null);
-    setErrors(null);
-    try {
+    void save.run(async () => {
       await createItem(
         {
           course: course.id,
@@ -388,15 +352,7 @@ function CreateItemModal({
         token,
       );
       onSaved();
-    } catch (err) {
-      if (err instanceof ApiError) {
-        setMessage(err.message);
-        setErrors(err.fieldErrors);
-      } else {
-        setMessage("Could not create the assessment item.");
-      }
-      setSaving(false);
-    }
+    });
   }
 
   return (
@@ -408,7 +364,7 @@ function CreateItemModal({
           <Button variant="ghost" onClick={onClose}>
             Cancel
           </Button>
-          <Button loading={saving} onClick={() => void submit()}>
+          <Button loading={save.pending} onClick={submit}>
             Create item
           </Button>
         </>
@@ -438,7 +394,7 @@ function CreateItemModal({
             error={firstError(errors, "kind")}
           />
           <TextInput
-            label={`Weight (${fmtPoints(weightLeft)} pts left)`}
+            label={`Weight (${formatNumber(weightLeft)} pts left)`}
             required
             type="number"
             value={weight}

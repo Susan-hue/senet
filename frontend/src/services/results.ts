@@ -1,5 +1,4 @@
-import { ApiError, requestFileOrJob, saveBlob } from "./api";
-import { apiRequest } from "./api";
+import { ApiError, apiRequest, requestFileOrJob, saveBlob, withQuery } from "./api";
 import type {
   CourseResult,
   CourseResultDetail,
@@ -17,15 +16,6 @@ const EXPORT_PATH: Record<ExportKind, string> = {
   broadsheet: "broadsheet",
   ogr: "ogr",
 };
-
-function withQuery(path: string, params: object) {
-  const search = new URLSearchParams();
-  Object.entries(params).forEach(([key, value]) => {
-    if (value !== undefined && value !== "") search.set(key, String(value));
-  });
-  const qs = search.toString();
-  return qs ? `${path}?${qs}` : path;
-}
 
 /**
  * Scope a listing to one slice of the hierarchy. Result sheets run to the

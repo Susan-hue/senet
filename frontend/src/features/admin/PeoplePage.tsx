@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useLocation } from "react-router-dom";
 import { Alert, Button } from "../../components";
 import {
@@ -9,7 +9,6 @@ import {
   Modal,
   SkeletonTable,
 } from "../../components/admin";
-import { ApiError } from "../../services/api";
 import {
   createUser,
   getInstitutionConfig,
@@ -21,8 +20,17 @@ import {
 import { LEVEL_OPTIONS, PERSON_ROLE_OPTIONS, ROLE_META } from "../../types";
 import type { Department, Faculty, Person, Role } from "../../types";
 import { useAuth } from "../../hooks";
-import { useAsyncData, useDebounced } from "./useAsyncData";
-import { PageHeader, Pager, SearchBox, SelectInput, TextInput, firstError } from "./ui";
+import { useAsyncAction, useAsyncData, useDebounced } from "./useAsyncData";
+import { useFacultyDepartmentFilter } from "./useDirectoryFilters";
+import {
+  FilterSelect,
+  PageHeader,
+  Pager,
+  SearchBox,
+  SelectInput,
+  TextInput,
+  firstError,
+} from "./ui";
 import { PlusIcon } from "./adminIcons";
 import styles from "./admin.module.css";
 
@@ -42,8 +50,6 @@ export function PeoplePage() {
   const location = useLocation();
 
   const [query, setQuery] = useState("");
-  const [facultyFilter, setFacultyFilter] = useState("");
-  const [deptFilter, setDeptFilter] = useState("");
   const [page, setPage] = useState(1);
   const search = useDebounced(query.trim());
 
@@ -52,43 +58,27 @@ export function PeoplePage() {
     [token],
   );
   const [faculties, departments, config] = refData.data ?? [[], [], { lecturer_ranks: [] }];
+  const scope = useFacultyDepartmentFilter(departments, () => setPage(1));
 
   const { data, loading, error, reload } = useAsyncData(
     () =>
       listUsers(token, {
         page,
         page_size: PAGE_SIZE,
-        faculty: facultyFilter,
-        department: deptFilter,
+        faculty: scope.faculty,
+        department: scope.department,
         search,
         is_active: true,
       }),
-    [token, page, facultyFilter, deptFilter, search],
+    [token, page, scope.faculty, scope.department, search],
   );
   const people = data?.results ?? [];
-  const hasFilters = Boolean(search || facultyFilter || deptFilter);
-
-  const deptMap = useMemo(() => {
-    const m = new Map<string, Department>();
-    departments.forEach((d) => m.set(d.id, d));
-    return m;
-  }, [departments]);
-
-  const deptOptions = useMemo(
-    () => departments.filter((d) => !facultyFilter || d.faculty === facultyFilter),
-    [departments, facultyFilter],
-  );
+  const hasFilters = Boolean(search || scope.faculty || scope.department);
 
   const [editing, setEditing] = useState<Person | "new" | null>(
     (location.state as { create?: boolean } | null)?.create ? "new" : null,
   );
   const [toRemove, setToRemove] = useState<Person | null>(null);
-
-  function pickFaculty(id: string) {
-    setFacultyFilter(id);
-    if (id && deptFilter && deptMap.get(deptFilter)?.faculty !== id) setDeptFilter("");
-    setPage(1);
-  }
 
   return (
     <div className={styles.page}>
@@ -115,35 +105,23 @@ export function PeoplePage() {
           }}
           placeholder="Search by name, email or matric number…"
         />
-        <select
-          className={styles.filter}
-          value={facultyFilter}
-          onChange={(e) => pickFaculty(e.target.value)}
-          aria-label="Filter by faculty"
-        >
-          <option value="">All faculties</option>
-          {faculties.map((f: Faculty) => (
-            <option key={f.id} value={f.id}>
-              {f.code} — {f.name}
-            </option>
-          ))}
-        </select>
-        <select
-          className={styles.filter}
-          value={deptFilter}
-          onChange={(e) => {
-            setDeptFilter(e.target.value);
-            setPage(1);
-          }}
-          aria-label="Filter by department"
-        >
-          <option value="">All departments</option>
-          {deptOptions.map((d) => (
-            <option key={d.id} value={d.id}>
-              {d.code} — {d.name}
-            </option>
-          ))}
-        </select>
+        <FilterSelect
+          value={scope.faculty}
+          onChange={scope.pickFaculty}
+          label="Filter by faculty"
+          allLabel="All faculties"
+          options={faculties.map((f: Faculty) => ({ value: f.id, label: `${f.code} — ${f.name}` }))}
+        />
+        <FilterSelect
+          value={scope.department}
+          onChange={scope.pickDepartment}
+          label="Filter by department"
+          allLabel="All departments"
+          options={scope.departmentOptions.map((d) => ({
+            value: d.id,
+            label: `${d.code} — ${d.name}`,
+          }))}
+        />
       </div>
 
       <div className={styles.panel}>
@@ -206,7 +184,9 @@ export function PeoplePage() {
                           ) : null}
                         </td>
                         <td className={styles.cellMuted}>
-                          {p.department ? (deptMap.get(p.department)?.code ?? "—") : "—"}
+                          {p.department
+                            ? (scope.departmentsById.get(p.department)?.code ?? "—")
+                            : "—"}
                         </td>
                         <td>
                           <div className={styles.rowActions}>
@@ -296,14 +276,10 @@ function PersonModal({
   const [department, setDepartment] = useState(person?.department ?? "");
   const [level, setLevel] = useState(person?.current_level ? String(person.current_level) : "");
   const [rank, setRank] = useState(person?.rank ?? "");
-  const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
-  const [errors, setErrors] = useState<Record<string, string[]> | null>(null);
+  const save = useAsyncAction("Could not save the person.");
+  const { message, errors } = save;
 
-  async function submit() {
-    setSaving(true);
-    setMessage(null);
-    setErrors(null);
+  function submit() {
     const body: Partial<Person> = {
       full_name: fullName.trim(),
       role,
@@ -312,19 +288,11 @@ function PersonModal({
       rank: role === "lecturer" && rank ? rank : null,
     };
     if (!isEdit) body.email = email.trim();
-    try {
+    void save.run(async () => {
       if (isEdit && person) await updateUser(person.id, body, token);
       else await createUser(body, token);
       onSaved();
-    } catch (err) {
-      if (err instanceof ApiError) {
-        setMessage(err.message);
-        setErrors(err.fieldErrors);
-      } else {
-        setMessage("Could not save the person.");
-      }
-      setSaving(false);
-    }
+    });
   }
 
   return (
@@ -336,7 +304,7 @@ function PersonModal({
           <Button variant="ghost" onClick={onClose}>
             Cancel
           </Button>
-          <Button loading={saving} onClick={submit}>
+          <Button loading={save.pending} onClick={submit}>
             {isEdit ? "Save changes" : "Add person"}
           </Button>
         </>
@@ -421,28 +389,21 @@ function RemovePerson({
   onClose: () => void;
   onDone: () => void;
 }) {
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  async function confirm() {
-    setLoading(true);
-    setError(null);
-    try {
-      await updateUser(person.id, { is_active: false }, token);
-      onDone();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not remove the person.");
-      setLoading(false);
-    }
-  }
+  const remove = useAsyncAction("Could not remove the person.");
   return (
     <ConfirmDialog
       title="Remove person"
       message={`Deactivate ${person.full_name}? They will be removed from the active directory and can no longer sign in. Their records are preserved.`}
       confirmLabel="Remove"
-      loading={loading}
-      error={error}
+      loading={remove.pending}
+      error={remove.message}
       onCancel={onClose}
-      onConfirm={confirm}
+      onConfirm={() =>
+        void remove.run(async () => {
+          await updateUser(person.id, { is_active: false }, token);
+          onDone();
+        })
+      }
     />
   );
 }

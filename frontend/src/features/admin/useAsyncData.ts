@@ -43,6 +43,62 @@ export function useAsyncData<T>(
   return { data, loading, error, reload };
 }
 
+interface AsyncActionState {
+  pending: boolean;
+  message: string | null;
+  errors: Record<string, string[]> | null;
+  /** Show a problem the form caught itself, without calling the API. */
+  fail: (problem: string | Record<string, string[]>) => void;
+  reset: () => void;
+  run: (action: () => Promise<unknown>) => Promise<boolean>;
+}
+
+/**
+ * Run a write (save, delete, ratify) and hold what the form needs to render it:
+ * whether it is in flight, the message to show if it failed, and the per-field
+ * errors the API returned. `run` reports success so a caller can branch, and
+ * leaves `pending` set on success — the screen it belongs to is on its way out.
+ */
+export function useAsyncAction(fallbackMessage: string): AsyncActionState {
+  const [pending, setPending] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [errors, setErrors] = useState<Record<string, string[]> | null>(null);
+
+  const reset = useCallback(() => {
+    setMessage(null);
+    setErrors(null);
+  }, []);
+
+  const fail = useCallback((problem: string | Record<string, string[]>) => {
+    setMessage(typeof problem === "string" ? problem : null);
+    setErrors(typeof problem === "string" ? null : problem);
+  }, []);
+
+  const run = useCallback(
+    async (action: () => Promise<unknown>) => {
+      setPending(true);
+      setMessage(null);
+      setErrors(null);
+      try {
+        await action();
+        return true;
+      } catch (err) {
+        if (err instanceof ApiError) {
+          setMessage(err.message);
+          setErrors(err.fieldErrors);
+        } else {
+          setMessage(fallbackMessage);
+        }
+        setPending(false);
+        return false;
+      }
+    },
+    [fallbackMessage],
+  );
+
+  return { pending, message, errors, fail, reset, run };
+}
+
 export function useDebounced<T>(value: T, delayMs = 350): T {
   const [debounced, setDebounced] = useState(value);
   useEffect(() => {

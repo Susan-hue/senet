@@ -2,9 +2,8 @@ from django.conf import settings
 from django.http import FileResponse, HttpResponse
 from rest_framework import status
 from rest_framework.exceptions import NotFound
-from rest_framework.views import APIView
 
-from accounts.pagination import DirectoryPagination
+from accounts.pagination import paginated_response
 from accounts.responses import error_response, success_response
 from results import services
 from results.exports import (
@@ -31,22 +30,7 @@ from results.serializers import (
     StudentScoreSerializer,
 )
 from results.tasks import generate_export
-from tenancy.scoping import set_current_institution
-
-
-class TenantAPIView(APIView):
-    """Activate tenant scoping after DRF resolves the JWT user."""
-
-    def initial(self, request, *args, **kwargs):
-        super().initial(request, *args, **kwargs)
-        set_current_institution(getattr(request.user, "institution", None))
-
-
-def _paginated(request, view, qs, serializer_class):
-    paginator = DirectoryPagination()
-    page = paginator.paginate_queryset(qs, request, view=view)
-    rows = serializer_class(page, many=True).data
-    return success_response(paginator.get_paginated_response(rows).data)
+from tenancy.views import TenantAPIView
 
 
 class ResultListCreateView(TenantAPIView):
@@ -60,10 +44,7 @@ class ResultListCreateView(TenantAPIView):
         qs = qs.select_related("course__department", "session", "semester", "lecturer").order_by(
             "-created_at"
         )
-        paginator = DirectoryPagination()
-        page = paginator.paginate_queryset(qs, request, view=self)
-        rows = CourseResultSerializer(page, many=True).data
-        return success_response(paginator.get_paginated_response(rows).data)
+        return paginated_response(request, self, qs, CourseResultSerializer)
 
     def post(self, request):
         serializer = CreateResultSerializer(data=request.data)
@@ -132,7 +113,7 @@ class ApprovalWorklistView(TenantAPIView):
         qs = qs.select_related("course__department", "session", "semester", "lecturer").order_by(
             "-created_at"
         )
-        return _paginated(request, self, qs, CourseResultSerializer)
+        return paginated_response(request, self, qs, CourseResultSerializer)
 
 
 class ApproveResultView(TenantAPIView):
@@ -301,7 +282,7 @@ class ExternalExaminerReportListCreateView(TenantAPIView):
         qs = services.filter_examiner_reports(
             services.visible_examiner_reports(request.user), request.query_params
         )
-        return _paginated(
+        return paginated_response(
             request,
             self,
             qs.select_related("faculty", "programme"),
@@ -350,7 +331,7 @@ class AmendmentListView(TenantAPIView):
             .select_related("student", "result__course")
             .order_by("-created_at")
         )
-        return _paginated(request, self, qs, ResultAmendmentSerializer)
+        return paginated_response(request, self, qs, ResultAmendmentSerializer)
 
 
 class AmendmentDetailView(TenantAPIView):

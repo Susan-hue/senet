@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useLocation } from "react-router-dom";
 import { Alert, Button } from "../../components";
 import {
@@ -8,7 +8,6 @@ import {
   Modal,
   SkeletonTable,
 } from "../../components/admin";
-import { ApiError } from "../../services/api";
 import {
   createCourse,
   deleteCourse,
@@ -20,8 +19,17 @@ import {
 import { LEVEL_OPTIONS } from "../../types";
 import type { Course, Department } from "../../types";
 import { useAuth } from "../../hooks";
-import { useAsyncData, useDebounced } from "./useAsyncData";
-import { PageHeader, Pager, SearchBox, SelectInput, TextInput, firstError } from "./ui";
+import { useAsyncAction, useAsyncData, useDebounced } from "./useAsyncData";
+import { useFacultyDepartmentFilter } from "./useDirectoryFilters";
+import {
+  FilterSelect,
+  PageHeader,
+  Pager,
+  SearchBox,
+  SelectInput,
+  TextInput,
+  firstError,
+} from "./ui";
 import { PlusIcon } from "./adminIcons";
 import styles from "./admin.module.css";
 
@@ -33,8 +41,6 @@ export function CoursesPage() {
   const location = useLocation();
 
   const [query, setQuery] = useState("");
-  const [facultyFilter, setFacultyFilter] = useState("");
-  const [deptFilter, setDeptFilter] = useState("");
   const [levelFilter, setLevelFilter] = useState("");
   const [page, setPage] = useState(1);
   const search = useDebounced(query.trim());
@@ -44,43 +50,27 @@ export function CoursesPage() {
     [token],
   );
   const [faculties, departments] = refData.data ?? [[], []];
+  const scope = useFacultyDepartmentFilter(departments, () => setPage(1));
 
   const { data, loading, error, reload } = useAsyncData(
     () =>
       listCourses(token, {
         page,
         page_size: PAGE_SIZE,
-        faculty: facultyFilter,
-        department: deptFilter,
+        faculty: scope.faculty,
+        department: scope.department,
         level: levelFilter,
         search,
       }),
-    [token, page, facultyFilter, deptFilter, levelFilter, search],
+    [token, page, scope.faculty, scope.department, levelFilter, search],
   );
   const courses = data?.results ?? [];
-  const hasFilters = Boolean(search || facultyFilter || deptFilter || levelFilter);
-
-  const deptMap = useMemo(() => {
-    const m = new Map<string, Department>();
-    departments.forEach((d) => m.set(d.id, d));
-    return m;
-  }, [departments]);
-
-  const deptOptions = useMemo(
-    () => departments.filter((d) => !facultyFilter || d.faculty === facultyFilter),
-    [departments, facultyFilter],
-  );
+  const hasFilters = Boolean(search || scope.faculty || scope.department || levelFilter);
 
   const [editing, setEditing] = useState<Course | "new" | null>(
     (location.state as { create?: boolean } | null)?.create ? "new" : null,
   );
   const [toDelete, setToDelete] = useState<Course | null>(null);
-
-  function pickFaculty(id: string) {
-    setFacultyFilter(id);
-    if (id && deptFilter && deptMap.get(deptFilter)?.faculty !== id) setDeptFilter("");
-    setPage(1);
-  }
 
   return (
     <div className={styles.page}>
@@ -107,51 +97,33 @@ export function CoursesPage() {
           }}
           placeholder="Search by code or title…"
         />
-        <select
-          className={styles.filter}
-          value={facultyFilter}
-          onChange={(e) => pickFaculty(e.target.value)}
-          aria-label="Filter by faculty"
-        >
-          <option value="">All faculties</option>
-          {faculties.map((f) => (
-            <option key={f.id} value={f.id}>
-              {f.code} — {f.name}
-            </option>
-          ))}
-        </select>
-        <select
-          className={styles.filter}
-          value={deptFilter}
-          onChange={(e) => {
-            setDeptFilter(e.target.value);
-            setPage(1);
-          }}
-          aria-label="Filter by department"
-        >
-          <option value="">All departments</option>
-          {deptOptions.map((d) => (
-            <option key={d.id} value={d.id}>
-              {d.code} — {d.name}
-            </option>
-          ))}
-        </select>
-        <select
-          className={styles.filter}
+        <FilterSelect
+          value={scope.faculty}
+          onChange={scope.pickFaculty}
+          label="Filter by faculty"
+          allLabel="All faculties"
+          options={faculties.map((f) => ({ value: f.id, label: `${f.code} — ${f.name}` }))}
+        />
+        <FilterSelect
+          value={scope.department}
+          onChange={scope.pickDepartment}
+          label="Filter by department"
+          allLabel="All departments"
+          options={scope.departmentOptions.map((d) => ({
+            value: d.id,
+            label: `${d.code} — ${d.name}`,
+          }))}
+        />
+        <FilterSelect
           value={levelFilter}
-          onChange={(e) => {
-            setLevelFilter(e.target.value);
+          onChange={(v) => {
+            setLevelFilter(v);
             setPage(1);
           }}
-          aria-label="Filter by level"
-        >
-          <option value="">All levels</option>
-          {LEVEL_OPTIONS.map((l) => (
-            <option key={l.value} value={l.value}>
-              {l.label}
-            </option>
-          ))}
-        </select>
+          label="Filter by level"
+          allLabel="All levels"
+          options={LEVEL_OPTIONS.map((l) => ({ value: l.value, label: l.label }))}
+        />
       </div>
 
       <div className={styles.panel}>
@@ -197,7 +169,9 @@ export function CoursesPage() {
                       <td className={styles.cellStrong}>{c.title}</td>
                       <td>{c.credit_units}</td>
                       <td>{c.level ?? "—"}</td>
-                      <td className={styles.cellMuted}>{deptMap.get(c.department)?.code ?? "—"}</td>
+                      <td className={styles.cellMuted}>
+                        {scope.departmentsById.get(c.department)?.code ?? "—"}
+                      </td>
                       <td className={styles.cellMuted}>
                         {c.effective_ca_weight} / {c.effective_exam_weight}
                       </td>
@@ -286,14 +260,10 @@ function CourseModal({
   const [level, setLevel] = useState(course?.level ? String(course.level) : "");
   const [ca, setCa] = useState(course?.ca_weight != null ? String(course.ca_weight) : "");
   const [exam, setExam] = useState(course?.exam_weight != null ? String(course.exam_weight) : "");
-  const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
-  const [errors, setErrors] = useState<Record<string, string[]> | null>(null);
+  const save = useAsyncAction("Could not save the course.");
+  const { message, errors } = save;
 
-  async function submit() {
-    setSaving(true);
-    setMessage(null);
-    setErrors(null);
+  function submit() {
     const body: Partial<Course> = {
       department,
       code: code.trim(),
@@ -303,19 +273,11 @@ function CourseModal({
       ca_weight: ca && exam ? Number(ca) : null,
       exam_weight: ca && exam ? Number(exam) : null,
     };
-    try {
+    void save.run(async () => {
       if (isEdit && course) await updateCourse(course.id, body, token);
       else await createCourse(body, token);
       onSaved();
-    } catch (err) {
-      if (err instanceof ApiError) {
-        setMessage(err.message);
-        setErrors(err.fieldErrors);
-      } else {
-        setMessage("Could not save the course.");
-      }
-      setSaving(false);
-    }
+    });
   }
 
   return (
@@ -327,7 +289,7 @@ function CourseModal({
           <Button variant="ghost" onClick={onClose}>
             Cancel
           </Button>
-          <Button loading={saving} onClick={submit}>
+          <Button loading={save.pending} onClick={submit}>
             {isEdit ? "Save changes" : "Create course"}
           </Button>
         </>
@@ -418,27 +380,20 @@ function DeleteCourse({
   onClose: () => void;
   onDeleted: () => void;
 }) {
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  async function confirm() {
-    setLoading(true);
-    setError(null);
-    try {
-      await deleteCourse(course.id, token);
-      onDeleted();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not delete the course.");
-      setLoading(false);
-    }
-  }
+  const remove = useAsyncAction("Could not delete the course.");
   return (
     <ConfirmDialog
       title="Delete course"
       message={`Delete ${course.code} — ${course.title}? This cannot be undone.`}
-      loading={loading}
-      error={error}
+      loading={remove.pending}
+      error={remove.message}
       onCancel={onClose}
-      onConfirm={confirm}
+      onConfirm={() =>
+        void remove.run(async () => {
+          await deleteCourse(course.id, token);
+          onDeleted();
+        })
+      }
     />
   );
 }

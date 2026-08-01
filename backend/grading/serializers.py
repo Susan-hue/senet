@@ -2,23 +2,15 @@ from rest_framework import serializers
 
 from accounts.models import Department, Semester, Session
 from grading.models import AcademicStanding
-from tenancy.scoping import get_current_institution
+from tenancy.serializers import TenantScopedSerializerMixin
 
 
-class ComputeRequestSerializer(serializers.Serializer):
+class ComputeRequestSerializer(TenantScopedSerializerMixin, serializers.Serializer):
+    tenant_scoped_fields = {"department": Department, "session": Session, "semester": Semester}
+
     department = serializers.PrimaryKeyRelatedField(queryset=Department.objects.none())
     session = serializers.PrimaryKeyRelatedField(queryset=Session.objects.none())
     semester = serializers.PrimaryKeyRelatedField(queryset=Semester.objects.none())
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        institution = get_current_institution()
-        if institution is not None:
-            self.fields["department"].queryset = Department.all_objects.filter(
-                institution=institution
-            )
-            self.fields["session"].queryset = Session.all_objects.filter(institution=institution)
-            self.fields["semester"].queryset = Semester.all_objects.filter(institution=institution)
 
     def validate(self, attrs):
         if attrs["semester"].session_id != attrs["session"].id:

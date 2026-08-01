@@ -19,7 +19,7 @@ from cbt.models import (
     QuestionType,
     WebcamCapture,
 )
-from tenancy.scoping import get_current_institution
+from tenancy.serializers import TenantScopedSerializerMixin
 
 
 class QuestionBankSerializer(serializers.ModelSerializer):
@@ -42,16 +42,12 @@ class QuestionBankSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
-class CreateQuestionBankSerializer(serializers.Serializer):
+class CreateQuestionBankSerializer(TenantScopedSerializerMixin, serializers.Serializer):
+    tenant_scoped_fields = {"course": Course}
+
     course = serializers.PrimaryKeyRelatedField(queryset=Course.objects.none())
     title = serializers.CharField(max_length=200)
     description = serializers.CharField(required=False, allow_blank=True, default="")
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        institution = get_current_institution()
-        if institution is not None:
-            self.fields["course"].queryset = Course.all_objects.filter(institution=institution)
 
 
 class QuestionSerializer(serializers.ModelSerializer):
@@ -78,7 +74,9 @@ class QuestionSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
-class CreateQuestionSerializer(serializers.Serializer):
+class CreateQuestionSerializer(TenantScopedSerializerMixin, serializers.Serializer):
+    tenant_scoped_fields = {"bank": QuestionBank}
+
     bank = serializers.PrimaryKeyRelatedField(queryset=QuestionBank.objects.none())
     type = serializers.ChoiceField(choices=QuestionType.choices)
     prompt = serializers.CharField()
@@ -87,12 +85,6 @@ class CreateQuestionSerializer(serializers.Serializer):
     marks = serializers.DecimalField(max_digits=6, decimal_places=2, default=Decimal("1"))
     difficulty = serializers.CharField(required=False, allow_blank=True, default="")
     topic = serializers.CharField(required=False, allow_blank=True, default="")
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        institution = get_current_institution()
-        if institution is not None:
-            self.fields["bank"].queryset = QuestionBank.all_objects.filter(institution=institution)
 
 
 class ExamSerializer(serializers.ModelSerializer):
@@ -126,7 +118,14 @@ class ExamSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
-class CreateExamSerializer(serializers.Serializer):
+class CreateExamSerializer(TenantScopedSerializerMixin, serializers.Serializer):
+    tenant_scoped_fields = {
+        "course": Course,
+        "session": Session,
+        "semester": Semester,
+        "banks": QuestionBank,
+    }
+
     course = serializers.PrimaryKeyRelatedField(queryset=Course.objects.none())
     session = serializers.PrimaryKeyRelatedField(queryset=Session.objects.none())
     semester = serializers.PrimaryKeyRelatedField(queryset=Semester.objects.none())
@@ -142,17 +141,6 @@ class CreateExamSerializer(serializers.Serializer):
     pass_mark = serializers.DecimalField(
         max_digits=5, decimal_places=2, default=Decimal("50"), min_value=Decimal("0")
     )
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        institution = get_current_institution()
-        if institution is not None:
-            self.fields["course"].queryset = Course.all_objects.filter(institution=institution)
-            self.fields["session"].queryset = Session.all_objects.filter(institution=institution)
-            self.fields["semester"].queryset = Semester.all_objects.filter(institution=institution)
-            self.fields["banks"].child_relation.queryset = QuestionBank.all_objects.filter(
-                institution=institution
-            )
 
 
 class ExamAttemptSerializer(serializers.ModelSerializer):
@@ -366,13 +354,7 @@ class GenerateQuestionsSerializer(serializers.Serializer):
         return attrs
 
 
-class LinkCaItemSerializer(serializers.Serializer):
-    item = serializers.PrimaryKeyRelatedField(queryset=AssessmentItem.objects.none())
+class LinkCaItemSerializer(TenantScopedSerializerMixin, serializers.Serializer):
+    tenant_scoped_fields = {"item": AssessmentItem}
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        institution = get_current_institution()
-        if institution is not None:
-            self.fields["item"].queryset = AssessmentItem.all_objects.filter(
-                institution=institution
-            )
+    item = serializers.PrimaryKeyRelatedField(queryset=AssessmentItem.objects.none())

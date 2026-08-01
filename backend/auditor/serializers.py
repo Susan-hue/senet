@@ -2,7 +2,7 @@ from rest_framework import serializers
 
 from accounts.models import Programme, Session
 from auditor.models import AuditorToken
-from tenancy.scoping import get_current_institution
+from tenancy.serializers import TenantScopedSerializerMixin
 
 
 class AuditorTokenSerializer(serializers.ModelSerializer):
@@ -31,7 +31,9 @@ class AuditorTokenSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
-class CreateAuditorTokenSerializer(serializers.Serializer):
+class CreateAuditorTokenSerializer(TenantScopedSerializerMixin, serializers.Serializer):
+    tenant_scoped_fields = {"programmes": Programme, "sessions": Session}
+
     label = serializers.CharField(max_length=200)
     expires_at = serializers.DateTimeField()
     programmes = serializers.PrimaryKeyRelatedField(
@@ -40,14 +42,3 @@ class CreateAuditorTokenSerializer(serializers.Serializer):
     sessions = serializers.PrimaryKeyRelatedField(
         queryset=Session.objects.none(), many=True, required=False, default=list
     )
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        institution = get_current_institution()
-        if institution is not None:
-            self.fields["programmes"].child_relation.queryset = Programme.all_objects.filter(
-                institution=institution
-            )
-            self.fields["sessions"].child_relation.queryset = Session.all_objects.filter(
-                institution=institution
-            )

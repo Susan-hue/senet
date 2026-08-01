@@ -10,16 +10,15 @@ import {
   SkeletonTable,
 } from "../../components/admin";
 import { useAuth } from "../../hooks";
-import { ApiError } from "../../services/api";
 import { listEnrolments } from "../../services/accounts";
 import { getItem, gradeStudent, listGrades, listSubmissions } from "../../services/assessments";
 import { ASSESSMENT_KIND_META } from "../../types";
 import type { AssessmentGrade, AssessmentItem, AssessmentSubmission, Enrolment } from "../../types";
-import { useAsyncData } from "../admin/useAsyncData";
+import { useAsyncAction, useAsyncData } from "../admin/useAsyncData";
 import { PageHeader, firstError } from "../admin/ui";
 import adminStyles from "../admin/admin.module.css";
 import resultStyles from "../results/results.module.css";
-import { fmtDateTime, fmtPoints } from "./AssessmentsPage";
+import { formatDateTime, formatNumber } from "../../utils";
 import styles from "./assessments.module.css";
 
 export function GradeItemPage() {
@@ -89,7 +88,7 @@ export function GradeItemPage() {
         title={item ? `${item.title} — ${item.course_code}` : "Grade submissions"}
         subtitle={
           item
-            ? `${item.course_title} · graded work counts ${fmtPoints(item.weight)} points of the final course mark.`
+            ? `${item.course_title} · graded work counts ${formatNumber(item.weight)} points of the final course mark.`
             : undefined
         }
         actions={kind ? <Badge tone={kind.tone}>{kind.label}</Badge> : null}
@@ -99,15 +98,15 @@ export function GradeItemPage() {
         <div className={styles.itemMeta}>
           <div className={styles.itemMetaEntry}>
             <span className={styles.itemMetaLabel}>Marked out of</span>
-            <span className={styles.itemMetaValue}>{fmtPoints(item.max_score)}</span>
+            <span className={styles.itemMetaValue}>{formatNumber(item.max_score)}</span>
           </div>
           <div className={styles.itemMetaEntry}>
             <span className={styles.itemMetaLabel}>Weight</span>
-            <span className={styles.itemMetaValue}>{fmtPoints(item.weight)} pts</span>
+            <span className={styles.itemMetaValue}>{formatNumber(item.weight)} pts</span>
           </div>
           <div className={styles.itemMetaEntry}>
             <span className={styles.itemMetaLabel}>Due</span>
-            <span className={styles.itemMetaValue}>{fmtDateTime(item.due_date)}</span>
+            <span className={styles.itemMetaValue}>{formatDateTime(item.due_date)}</span>
           </div>
           <div className={styles.itemMetaEntry}>
             <span className={styles.itemMetaLabel}>Submissions</span>
@@ -136,7 +135,7 @@ export function GradeItemPage() {
                   <th>Matric No.</th>
                   <th>Student</th>
                   <th>Submission</th>
-                  <th>Score ({item ? fmtPoints(item.max_score) : "—"})</th>
+                  <th>Score ({item ? formatNumber(item.max_score) : "—"})</th>
                   <th aria-label="Actions" />
                 </tr>
               </thead>
@@ -166,7 +165,7 @@ export function GradeItemPage() {
                               <span>{submission.original_filename || "File submitted"}</span>
                             )}
                             <span className={styles.submissionMeta}>
-                              {fmtDateTime(submission.submitted_at)}
+                              {formatDateTime(submission.submitted_at)}
                               {submission.is_late ? " · " : ""}
                               {submission.is_late ? <Badge tone="warning">Late</Badge> : null}
                             </span>
@@ -178,7 +177,7 @@ export function GradeItemPage() {
                       <td>
                         {grade ? (
                           <>
-                            <span className={styles.scoreChip}>{fmtPoints(grade.score)}</span>{" "}
+                            <span className={styles.scoreChip}>{formatNumber(grade.score)}</span>{" "}
                             {grade.is_released ? <Badge tone="success">Released</Badge> : null}
                           </>
                         ) : (
@@ -241,51 +240,38 @@ function GradeModal({
   const [score, setScore] = useState(existing ? existing.score : "");
   const [feedback, setFeedback] = useState(existing?.feedback ?? "");
   const [release, setRelease] = useState(existing?.is_released ?? false);
-  const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
-  const [errors, setErrors] = useState<Record<string, string[]> | null>(null);
+  const saving = useAsyncAction("Could not record the grade.");
+  const { message, errors } = saving;
   const [confirmRelease, setConfirmRelease] = useState(false);
 
   const maxScore = Number(item.max_score);
 
   function validate(): boolean {
     if (score.trim() === "" || Number.isNaN(Number(score))) {
-      setErrors({ score: ["Enter a score."] });
+      saving.fail({ score: ["Enter a score."] });
       return false;
     }
     if (Number(score) < 0 || Number(score) > maxScore) {
-      setErrors({ score: [`Score must be between 0 and ${fmtPoints(item.max_score)}.`] });
+      saving.fail({ score: [`Score must be between 0 and ${formatNumber(item.max_score)}.`] });
       return false;
     }
     return true;
   }
 
   async function save() {
-    setSaving(true);
-    setMessage(null);
-    setErrors(null);
-    try {
+    const ok = await saving.run(async () => {
       const grade = await gradeStudent(
         item.id,
         { student: enrolment.student, score, feedback, is_released: release },
         token,
       );
       onSaved(grade);
-    } catch (err) {
-      setConfirmRelease(false);
-      if (err instanceof ApiError) {
-        setMessage(err.message);
-        setErrors(err.fieldErrors);
-      } else {
-        setMessage("Could not record the grade.");
-      }
-      setSaving(false);
-    }
+    });
+    if (!ok) setConfirmRelease(false);
   }
 
   function onSubmit() {
-    setErrors(null);
-    setMessage(null);
+    saving.reset();
     if (!validate()) return;
     if (release && !existing?.is_released) {
       setConfirmRelease(true);
@@ -303,7 +289,7 @@ function GradeModal({
           <Button variant="ghost" onClick={onClose}>
             Cancel
           </Button>
-          <Button loading={saving} onClick={onSubmit}>
+          <Button loading={saving.pending} onClick={onSubmit}>
             {existing ? "Update grade" : "Save grade"}
           </Button>
         </>
@@ -333,7 +319,7 @@ function GradeModal({
                 <span>{submission.original_filename || "File submitted"}</span>
               )}
               <span className={styles.submissionMeta}>
-                Submitted {fmtDateTime(submission.submitted_at)}
+                Submitted {formatDateTime(submission.submitted_at)}
                 {submission.is_late ? " — after the deadline" : ""}
               </span>
               {submission.is_late ? <Badge tone="warning">Late</Badge> : null}
@@ -348,7 +334,7 @@ function GradeModal({
 
         <label className={adminStyles.formFull}>
           <span className={adminStyles.fieldLabel}>
-            Score (out of {fmtPoints(item.max_score)}) <span className={adminStyles.req}>*</span>
+            Score (out of {formatNumber(item.max_score)}) <span className={adminStyles.req}>*</span>
           </span>
           <input
             className={adminStyles.input}
@@ -398,9 +384,9 @@ function GradeModal({
       {confirmRelease ? (
         <ConfirmDialog
           title="Release this grade to the student?"
-          message={`${enrolment.student_name} will immediately see ${fmtPoints(score || "0")} / ${fmtPoints(item.max_score)} and your feedback for “${item.title}”. Once graded, their submission can no longer be replaced.`}
-          confirmLabel={saving ? "Releasing…" : "Release grade"}
-          loading={saving}
+          message={`${enrolment.student_name} will immediately see ${formatNumber(score || "0")} / ${formatNumber(item.max_score)} and your feedback for “${item.title}”. Once graded, their submission can no longer be replaced.`}
+          confirmLabel={saving.pending ? "Releasing…" : "Release grade"}
+          loading={saving.pending}
           error={null}
           onConfirm={() => void save()}
           onCancel={() => setConfirmRelease(false)}

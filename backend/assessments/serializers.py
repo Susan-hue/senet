@@ -5,7 +5,7 @@ from rest_framework import serializers
 
 from accounts.models import Course, Role, Semester, Session, User
 from assessments.models import AssessmentGrade, AssessmentItem, Submission
-from tenancy.scoping import get_current_institution
+from tenancy.serializers import TenantScopedSerializerMixin
 
 
 class AssessmentItemSerializer(serializers.ModelSerializer):
@@ -34,7 +34,9 @@ class AssessmentItemSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
-class CreateItemSerializer(serializers.Serializer):
+class CreateItemSerializer(TenantScopedSerializerMixin, serializers.Serializer):
+    tenant_scoped_fields = {"course": Course, "session": Session, "semester": Semester}
+
     course = serializers.PrimaryKeyRelatedField(queryset=Course.objects.none())
     session = serializers.PrimaryKeyRelatedField(queryset=Session.objects.none())
     semester = serializers.PrimaryKeyRelatedField(queryset=Semester.objects.none())
@@ -43,14 +45,6 @@ class CreateItemSerializer(serializers.Serializer):
     max_score = serializers.DecimalField(max_digits=6, decimal_places=2)
     weight = serializers.DecimalField(max_digits=5, decimal_places=2)
     due_date = serializers.DateTimeField()
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        institution = get_current_institution()
-        if institution is not None:
-            self.fields["course"].queryset = Course.all_objects.filter(institution=institution)
-            self.fields["session"].queryset = Session.all_objects.filter(institution=institution)
-            self.fields["semester"].queryset = Semester.all_objects.filter(institution=institution)
 
 
 class SubmissionSerializer(serializers.ModelSerializer):
@@ -127,16 +121,10 @@ class GradeSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
-class GradeInputSerializer(serializers.Serializer):
+class GradeInputSerializer(TenantScopedSerializerMixin, serializers.Serializer):
+    tenant_scoped_fields = {"student": (User, {"role": Role.STUDENT})}
+
     student = serializers.PrimaryKeyRelatedField(queryset=User.objects.none())
     score = serializers.DecimalField(max_digits=6, decimal_places=2, min_value=Decimal("0"))
     feedback = serializers.CharField(required=False, allow_blank=True, default="")
     is_released = serializers.BooleanField(required=False, default=False)
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        institution = get_current_institution()
-        if institution is not None:
-            self.fields["student"].queryset = User.objects.filter(
-                institution=institution, role=Role.STUDENT
-            )

@@ -13,7 +13,7 @@ import {
 } from "../../services/accounts";
 import type { CourseAssignment } from "../../types";
 import { useAuth } from "../../hooks";
-import { useAsyncData } from "./useAsyncData";
+import { useAsyncAction, useAsyncData } from "./useAsyncData";
 import { PageHeader, SelectInput } from "./ui";
 import styles from "./admin.module.css";
 
@@ -228,28 +228,21 @@ function UnassignDialog({
   onClose: () => void;
   onDone: () => void;
 }) {
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  async function confirm() {
-    setLoading(true);
-    setError(null);
-    try {
-      await deleteAssignment(assignment.id, token);
-      onDone();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not remove the assignment.");
-      setLoading(false);
-    }
-  }
+  const remove = useAsyncAction("Could not remove the assignment.");
   return (
     <ConfirmDialog
       title="Remove assignment"
       message={`Unassign ${lecturerName} from ${courseCode}?`}
       confirmLabel="Unassign"
-      loading={loading}
-      error={error}
+      loading={remove.pending}
+      error={remove.message}
       onCancel={onClose}
-      onConfirm={confirm}
+      onConfirm={() =>
+        void remove.run(async () => {
+          await deleteAssignment(assignment.id, token);
+          onDone();
+        })
+      }
     />
   );
 }

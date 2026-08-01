@@ -3,14 +3,9 @@ import { Badge, EmptyState, ErrorState, SkeletonTable } from "../../components/a
 import { RESULT_STATUS_META } from "../../types";
 import type { CourseResult, Page } from "../../types";
 import { Pager } from "../admin/ui";
+import { formatDate } from "../../utils";
 import adminStyles from "../admin/admin.module.css";
 import styles from "./board.module.css";
-
-function relativeDate(value: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
-}
 
 export interface WorklistSelection {
   selected: ReadonlySet<string>;
@@ -114,7 +109,7 @@ export function WorklistPanel({
                   <td>
                     <Badge tone={meta.tone}>{meta.label}</Badge>
                   </td>
-                  <td className={adminStyles.cellMuted}>{relativeDate(result.updated_at)}</td>
+                  <td className={adminStyles.cellMuted}>{formatDate(result.updated_at)}</td>
                   <td>
                     <div className={adminStyles.rowActions}>
                       <Link to={detailPath(result)} className={adminStyles.textBtn}>

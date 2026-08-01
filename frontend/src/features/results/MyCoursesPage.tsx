@@ -5,25 +5,13 @@ import { useAuth } from "../../hooks";
 import { listAssignments, listSemesters, listSessions } from "../../services/accounts";
 import { listResults } from "../../services/results";
 import { RESULT_STATUS_META } from "../../types";
-import type { CourseAssignment, CourseResult, Semester, Session } from "../../types";
+import type { CourseAssignment, CourseResult } from "../../types";
 import { useAsyncData } from "../admin/useAsyncData";
 import { PageHeader } from "../admin/ui";
 import { BookIcon } from "../admin/adminIcons";
+import { currentSemesterOf } from "../../utils";
 import adminStyles from "../admin/admin.module.css";
 import styles from "./results.module.css";
-
-function currentSemesterOf(session: Session | null, semesters: Semester[]) {
-  if (!session) return null;
-  const now = Date.now();
-  const inSession = semesters.filter((s) => s.session === session.id);
-  return (
-    inSession.find(
-      (s) => new Date(s.start_date).getTime() <= now && now <= new Date(s.end_date).getTime(),
-    ) ??
-    inSession[0] ??
-    null
-  );
-}
 
 export function MyCoursesPage() {
   const { accessToken } = useAuth();

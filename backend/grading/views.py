@@ -1,9 +1,8 @@
 from rest_framework import status
 from rest_framework.exceptions import NotFound, PermissionDenied
-from rest_framework.views import APIView
 
 from accounts.models import Role, Semester, Session, User
-from accounts.pagination import DirectoryPagination
+from accounts.pagination import paginated_response
 from accounts.responses import error_response, success_response
 from grading import services
 from grading.models import AcademicStanding
@@ -14,15 +13,7 @@ from grading.permissions import (
 )
 from grading.serializers import AcademicStandingSerializer, ComputeRequestSerializer
 from grading.tasks import compute_department_standing
-from tenancy.scoping import set_current_institution
-
-
-class TenantAPIView(APIView):
-    """Activate tenant scoping after DRF resolves the JWT user."""
-
-    def initial(self, request, *args, **kwargs):
-        super().initial(request, *args, **kwargs)
-        set_current_institution(getattr(request.user, "institution", None))
+from tenancy.views import TenantAPIView
 
 
 def _term_from_params(request):
@@ -133,7 +124,4 @@ class StandingListView(TenantAPIView):
         if department:
             qs = qs.filter(student__department_id=department)
 
-        paginator = DirectoryPagination()
-        page = paginator.paginate_queryset(qs, request, view=self)
-        rows = AcademicStandingSerializer(page, many=True).data
-        return success_response(paginator.get_paginated_response(rows).data)
+        return paginated_response(request, self, qs, AcademicStandingSerializer)

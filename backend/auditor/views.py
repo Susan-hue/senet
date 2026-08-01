@@ -3,7 +3,7 @@ from rest_framework import status
 from rest_framework.exceptions import NotFound
 from rest_framework.views import APIView
 
-from accounts.pagination import DirectoryPagination
+from accounts.pagination import paginated_response
 from accounts.responses import error_response, success_response
 from auditor.authentication import AuditorTokenAuthentication
 from auditor.models import AuditorAccessLog, AuditorToken
@@ -30,15 +30,8 @@ from results.serializers import (
     ExternalExaminerReportSerializer,
     StudentScoreSerializer,
 )
-from results.views import TenantAPIView
 from tenancy.scoping import set_current_institution
-
-
-def _paginated(request, view, qs, serializer_class):
-    paginator = DirectoryPagination()
-    page = paginator.paginate_queryset(qs, request, view=view)
-    rows = serializer_class(page, many=True).data
-    return success_response(paginator.get_paginated_response(rows).data)
+from tenancy.views import TenantAPIView
 
 
 def _attachment(data, filename, content_type):
@@ -57,7 +50,7 @@ class AuditorTokenListCreateView(TenantAPIView):
 
     def get(self, request):
         qs = AuditorToken.objects.prefetch_related("programmes", "sessions").order_by("-created_at")
-        return _paginated(request, self, qs, AuditorTokenSerializer)
+        return paginated_response(request, self, qs, AuditorTokenSerializer)
 
     def post(self, request):
         serializer = CreateAuditorTokenSerializer(data=request.data)
@@ -129,7 +122,7 @@ class AuditorResultListView(AuditorReadView):
 
     def get(self, request):
         qs = auditor_visible_results(self.token)
-        return _paginated(request, self, qs, CourseResultSerializer)
+        return paginated_response(request, self, qs, CourseResultSerializer)
 
 
 class AuditorResultDetailView(AuditorReadView):
@@ -172,4 +165,4 @@ class AuditorExaminerReportListView(AuditorReadView):
 
     def get(self, request):
         qs = auditor_visible_examiner_reports(self.token)
-        return _paginated(request, self, qs, ExternalExaminerReportSerializer)
+        return paginated_response(request, self, qs, ExternalExaminerReportSerializer)

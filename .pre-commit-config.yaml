@@ -22,6 +22,9 @@ repos:
     hooks:
       - id: bandit
         files: ^backend/
+        # Bandit takes the tree as its single target; the changed paths pre-commit
+        # would otherwise append are rejected as extra arguments.
+        pass_filenames: false
         args: ["-r", "backend", "-c", "backend/pyproject.toml"]
         additional_dependencies: ["bandit[toml]"]
 

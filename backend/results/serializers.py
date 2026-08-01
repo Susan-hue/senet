@@ -10,7 +10,7 @@ from results.models import (
     ResultAmendment,
     StudentScore,
 )
-from tenancy.scoping import get_current_institution
+from tenancy.serializers import TenantScopedSerializerMixin
 
 
 class StudentScoreSerializer(serializers.ModelSerializer):
@@ -94,21 +94,17 @@ class CourseResultDetailSerializer(CourseResultSerializer):
         return compute_anomaly_stats(result)
 
 
-class CreateResultSerializer(serializers.Serializer):
+class CreateResultSerializer(TenantScopedSerializerMixin, serializers.Serializer):
+    tenant_scoped_fields = {"course": Course, "session": Session, "semester": Semester}
+
     course = serializers.PrimaryKeyRelatedField(queryset=Course.objects.none())
     session = serializers.PrimaryKeyRelatedField(queryset=Session.objects.none())
     semester = serializers.PrimaryKeyRelatedField(queryset=Semester.objects.none())
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        institution = get_current_institution()
-        if institution is not None:
-            self.fields["course"].queryset = Course.all_objects.filter(institution=institution)
-            self.fields["session"].queryset = Session.all_objects.filter(institution=institution)
-            self.fields["semester"].queryset = Semester.all_objects.filter(institution=institution)
 
+class ScoreInputSerializer(TenantScopedSerializerMixin, serializers.Serializer):
+    tenant_scoped_fields = {"student": (User, {"role": Role.STUDENT})}
 
-class ScoreInputSerializer(serializers.Serializer):
     student = serializers.PrimaryKeyRelatedField(queryset=User.objects.none())
     # Omit ca_score to have it aggregated from the student's graded assessment
     # items for this course term.
@@ -121,14 +117,6 @@ class ScoreInputSerializer(serializers.Serializer):
         default=None,
     )
     exam_score = serializers.DecimalField(max_digits=5, decimal_places=2, min_value=Decimal("0"))
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        institution = get_current_institution()
-        if institution is not None:
-            self.fields["student"].queryset = User.objects.filter(
-                institution=institution, role=Role.STUDENT
-            )
 
 
 class ReturnReasonSerializer(serializers.Serializer):
@@ -168,7 +156,9 @@ class ExternalExaminerReportSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
-class CreateExternalExaminerReportSerializer(serializers.Serializer):
+class CreateExternalExaminerReportSerializer(TenantScopedSerializerMixin, serializers.Serializer):
+    tenant_scoped_fields = {"programme": Programme, "session": Session, "semester": Semester}
+
     programme = serializers.PrimaryKeyRelatedField(queryset=Programme.objects.none())
     session = serializers.PrimaryKeyRelatedField(queryset=Session.objects.none())
     semester = serializers.PrimaryKeyRelatedField(queryset=Semester.objects.none())
@@ -176,16 +166,6 @@ class CreateExternalExaminerReportSerializer(serializers.Serializer):
     examiner_institution = serializers.CharField(max_length=200)
     audit_date = serializers.DateField()
     remarks = serializers.CharField(required=False, allow_blank=True, default="")
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        institution = get_current_institution()
-        if institution is not None:
-            self.fields["programme"].queryset = Programme.all_objects.filter(
-                institution=institution
-            )
-            self.fields["session"].queryset = Session.all_objects.filter(institution=institution)
-            self.fields["semester"].queryset = Semester.all_objects.filter(institution=institution)
 
 
 class ResultAmendmentSerializer(serializers.ModelSerializer):
@@ -235,7 +215,9 @@ class ExportJobSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
-class RaiseAmendmentSerializer(serializers.Serializer):
+class RaiseAmendmentSerializer(TenantScopedSerializerMixin, serializers.Serializer):
+    tenant_scoped_fields = {"student": (User, {"role": Role.STUDENT})}
+
     student = serializers.PrimaryKeyRelatedField(queryset=User.objects.none())
     proposed_ca_score = serializers.DecimalField(
         max_digits=5, decimal_places=2, min_value=Decimal("0")
@@ -244,11 +226,3 @@ class RaiseAmendmentSerializer(serializers.Serializer):
         max_digits=5, decimal_places=2, min_value=Decimal("0")
     )
     justification = serializers.CharField(allow_blank=False, trim_whitespace=True)
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        institution = get_current_institution()
-        if institution is not None:
-            self.fields["student"].queryset = User.objects.filter(
-                institution=institution, role=Role.STUDENT
-            )

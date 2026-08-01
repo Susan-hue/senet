@@ -12,7 +12,7 @@ from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
-from accounts.pagination import DirectoryPagination
+from accounts.pagination import paginated_response
 from accounts.responses import error_response, success_response
 from notifications import resultcheck, services
 from notifications.models import ResultCheckRegistration
@@ -25,15 +25,7 @@ from notifications.serializers import (
     StartRegistrationSerializer,
     UssdSerializer,
 )
-from tenancy.scoping import set_current_institution
-
-
-class TenantAPIView(APIView):
-    """Activate tenant scoping after DRF resolves the JWT user."""
-
-    def initial(self, request, *args, **kwargs):
-        super().initial(request, *args, **kwargs)
-        set_current_institution(getattr(request.user, "institution", None))
+from tenancy.views import TenantAPIView
 
 
 class NotificationListView(TenantAPIView):
@@ -44,10 +36,7 @@ class NotificationListView(TenantAPIView):
         status_filter = request.query_params.get("status")
         if status_filter:
             qs = qs.filter(status=status_filter)
-        paginator = DirectoryPagination()
-        page = paginator.paginate_queryset(qs, request, view=self)
-        rows = NotificationSerializer(page, many=True).data
-        return success_response(paginator.get_paginated_response(rows).data)
+        return paginated_response(request, self, qs, NotificationSerializer)
 
 
 class ResultCheckRegistrationView(TenantAPIView):

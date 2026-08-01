@@ -212,6 +212,37 @@ export function Pager({
   );
 }
 
+/** A toolbar dropdown that narrows a listing, with an "all" arm at the top. */
+export function FilterSelect({
+  value,
+  onChange,
+  label,
+  allLabel,
+  options,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  label: string;
+  allLabel: string;
+  options: ReadonlyArray<{ value: string; label: string }>;
+}) {
+  return (
+    <select
+      className={styles.filter}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      aria-label={label}
+    >
+      <option value="">{allLabel}</option>
+      {options.map((o) => (
+        <option key={o.value} value={o.value}>
+          {o.label}
+        </option>
+      ))}
+    </select>
+  );
+}
+
 export function SearchBox({
   value,
   onChange,
