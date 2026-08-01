@@ -1,8 +1,5 @@
 :root {
   color-scheme: dark;
-
-  /* Near-black, flat. No brand gradient: depth comes from one-pixel borders
-     and small steps in surface lightness, not from colour washes. */
   --bg: #0a0a0a;
   --bg-brand: #0a0a0a;
   --surface: #0e0e0e;
@@ -19,9 +16,7 @@
   --text-label: #a1a1a1;
   --text-faint: #6b6b6b;
 
-  /* One accent, used sparingly: links, focus rings, the odd status dot. The
-     primary button is near-white — the loudest thing on the page should be the
-     page's own contrast, not a colour. */
+  
   --accent: #7c7cf0;
   --accent-solid: #7c7cf0;
   --accent-hover: #8f8ff5;

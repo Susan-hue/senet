@@ -1,4 +1,4 @@
-from django.db.models import Sum
+from django.db.models import Exists, OuterRef, Sum
 from rest_framework import serializers
 
 from accounts.models import CourseAssignment, Enrolment, Role
@@ -144,3 +144,90 @@ def lecturer_can_access_course(user, course, session, semester):
     return CourseAssignment.all_objects.filter(
         lecturer=user, course=course, session=session, semester=semester
     ).exists()
+
+
+STUDENT_ROLES = (Role.STUDENT, Role.COURSE_REP)
+
+
+def student_is_enrolled(user, course, session, semester):
+    """Whether ``user`` holds an enrolment in ``course`` for the given term."""
+    if user is None or getattr(user, "role", None) not in STUDENT_ROLES:
+        return False
+    return Enrolment.all_objects.filter(
+        student=user, course=course, session=session, semester=semester
+    ).exists()
+
+
+def can_manage_course(user, course, session, semester):
+    """Whether ``user`` may author and moderate teaching material on a course.
+
+    The lecturer assigned to that course-term, the HOD of the owning department,
+    the dean of its faculty, and school/senate admins across the tenant. A
+    lecturer is scoped to the course they actually teach — assignment to another
+    course confers nothing here.
+    """
+    role = getattr(user, "role", None)
+    if user is None or role is None:
+        return False
+    if user.institution_id != course.institution_id:
+        return False
+    if role == Role.LECTURER:
+        return lecturer_can_access_course(user, course, session, semester)
+    if role == Role.HOD:
+        return user.department_id is not None and user.department_id == course.department_id
+    if role == Role.DEAN:
+        return user.faculty_id is not None and user.faculty_id == course.department.faculty_id
+    return role in (Role.SENATE_ADMIN, Role.SCHOOL_ADMIN)
+
+
+def can_access_course(user, course, session, semester):
+    """Whether ``user`` may read a course's teaching material: anyone who can
+    manage it, plus the students enrolled in that course-term."""
+    return can_manage_course(user, course, session, semester) or student_is_enrolled(
+        user, course, session, semester
+    )
+
+
+def scope_to_accessible_courses(qs, user, prefix=""):
+    """Narrow a queryset of course-term rows to the ones ``user`` may read.
+
+    Rows must carry ``course``/``session``/``semester`` (optionally behind a
+    relation ``prefix``). Managers see whole slices of the tenant, so their
+    narrowing is a plain filter; a student's is an ``Exists`` against their own
+    enrolments, which keeps the whole thing one query regardless of how many
+    courses they take.
+    """
+    role = getattr(user, "role", None)
+    if user is None or role is None:
+        return qs.none()
+
+    def field(name):
+        return f"{prefix}{name}"
+
+    if role == Role.LECTURER:
+        assigned = CourseAssignment.all_objects.filter(
+            lecturer=user,
+            course=OuterRef(field("course")),
+            session=OuterRef(field("session")),
+            semester=OuterRef(field("semester")),
+        )
+        return qs.filter(Exists(assigned))
+    if role in STUDENT_ROLES:
+        enrolled = Enrolment.all_objects.filter(
+            student=user,
+            course=OuterRef(field("course")),
+            session=OuterRef(field("session")),
+            semester=OuterRef(field("semester")),
+        )
+        return qs.filter(Exists(enrolled))
+    if role == Role.HOD:
+        if user.department_id is None:
+            return qs.none()
+        return qs.filter(**{f"{field('course')}__department_id": user.department_id})
+    if role == Role.DEAN:
+        if user.faculty_id is None:
+            return qs.none()
+        return qs.filter(**{f"{field('course')}__department__faculty_id": user.faculty_id})
+    if role in (Role.SENATE_ADMIN, Role.SCHOOL_ADMIN):
+        return qs
+    return qs.none()

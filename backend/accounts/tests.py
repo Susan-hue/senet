@@ -1112,7 +1112,7 @@ class CourseAssignmentTests(APITestCase):
     def test_can_list_and_remove_assignment(self):
         created = self._create().data["data"]["id"]
         listed = self.client.get(reverse("assignment-list"))
-        self.assertEqual(len(listed.data["data"]), 1)
+        self.assertEqual(listed.data["data"]["count"], 1)
 
         removed = self.client.delete(reverse("assignment-detail", args=[created]))
         self.assertEqual(removed.status_code, status.HTTP_200_OK)
@@ -1159,7 +1159,7 @@ class CourseAssignmentTests(APITestCase):
 
         # Cannot see the first institution's assignments.
         listed = self.client.get(reverse("assignment-list"))
-        self.assertEqual(len(listed.data["data"]), 0)
+        self.assertEqual(listed.data["data"]["count"], 0)
 
         # Cannot create against the first institution's course/lecturer.
         blocked = self._create()
@@ -1217,7 +1217,7 @@ class LecturerReadAccessTests(APITestCase):
         self.client.force_authenticate(self.lecturer)
         response = self.client.get(reverse("assignment-list"))
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        rows = response.data["data"]
+        rows = response.data["data"]["results"]
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]["id"], str(self.assignment.id))
 

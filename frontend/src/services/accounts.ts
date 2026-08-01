@@ -116,6 +116,9 @@ export interface CourseListParams {
   faculty?: string;
   department?: string;
   level?: string;
+  /** Narrows to courses actually taught that term (i.e. that have a lecturer assignment). */
+  session?: string;
+  semester?: string;
   search?: string;
 }
 export const listCourses = (t: string, params: CourseListParams = {}) =>
@@ -133,6 +136,7 @@ export interface UserListParams {
   faculty?: string;
   department?: string;
   role?: Role;
+  level?: string;
   search?: string;
   is_active?: boolean;
 }
@@ -144,8 +148,20 @@ export const updateUser = (id: string, b: Partial<Person>, t: string) =>
   patchOf<Person>(`${ACCOUNTS}/users/${id}`, b, t);
 
 // --- Lecturer assignments ---
-export const listAssignments = (t: string) =>
-  listOf<CourseAssignment>(`${ACCOUNTS}/assignments`, t);
+export interface AssignmentListParams {
+  page?: number;
+  page_size?: number;
+  faculty?: string;
+  department?: string;
+  level?: string;
+  session?: string;
+  semester?: string;
+  lecturer?: string;
+  course?: string;
+  search?: string;
+}
+export const listAssignments = (t: string, params: AssignmentListParams = {}) =>
+  pageOf<CourseAssignment>(`${ACCOUNTS}/assignments`, params as QueryParams, t);
 
 // --- Enrolments (course rosters) ---
 export const listEnrolments = (

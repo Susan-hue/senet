@@ -26,10 +26,11 @@ import {
   HodBoardPage,
   SenateBoardPage,
 } from "./features/board";
-import { MyCoursesPage, ScoreSheetPage } from "./features/results";
+import { ScoreSheetPage } from "./features/results";
 import { AssessmentsPage, GradeItemPage } from "./features/assessments";
 import { MyResultsPage } from "./features/student";
 import { LandingPage } from "./features/landing";
+import { LearningCoursePage, LearningCoursesPage } from "./features/lms";
 import { PrivacyPage, TermsPage } from "./features/legal";
 import {
   ForgotPasswordPage,
@@ -68,24 +69,27 @@ function ProtectedRoute({
 function RoleHome() {
   const { user } = useAuth();
   if (user?.role && ADMIN_ROLES.includes(user.role)) return <Navigate to="/dashboard" replace />;
-  if (user?.role === "lecturer") return <Navigate to="/teach" replace />;
+  if (user?.role === "lecturer") return <Navigate to="/teach/courses" replace />;
   // Each approval stage lands on its own board rather than a shared inbox: the
   // work, the scope and the consequences of a decision differ at every stage.
   if (user?.role && HOD_ROLES.includes(user.role)) return <Navigate to="/board" replace />;
   if (user?.role && DEAN_ROLES.includes(user.role)) return <Navigate to="/faculty" replace />;
   if (user?.role && SENATE_ROLES.includes(user.role)) return <Navigate to="/senate" replace />;
   if (user?.role && STUDENT_ROLES.includes(user.role)) {
-    return <Navigate to="/me/results" replace />;
+    return <Navigate to="/me/courses" replace />;
   }
   return <Navigate to="/403" replace />;
 }
 
 const LECTURER_NAV = [
-  { to: "/teach", label: "My Courses", Icon: BookIcon, end: true },
+  { to: "/teach/courses", label: "My Courses", Icon: BookIcon, end: true },
   { to: "/teach/assessments", label: "Assessments", Icon: ClipboardIcon },
 ];
 
-const STUDENT_NAV = [{ to: "/me/results", label: "My Results", Icon: AwardIcon }];
+const STUDENT_NAV = [
+  { to: "/me/courses", label: "My Courses", Icon: BookIcon, end: true },
+  { to: "/me/results", label: "My Results", Icon: AwardIcon },
+];
 
 const HOD_NAV = [{ to: "/board", label: "Departmental Board", Icon: ClipboardIcon, end: true }];
 
@@ -128,7 +132,9 @@ function AppRoutes() {
           </ProtectedRoute>
         }
       >
-        <Route path="/teach" element={<MyCoursesPage />} />
+        <Route path="/teach" element={<LearningCoursesPage role="lecturer" />} />
+        <Route path="/teach/courses" element={<LearningCoursesPage role="lecturer" />} />
+        <Route path="/teach/courses/:courseId" element={<LearningCoursePage role="lecturer" />} />
         <Route path="/teach/sheet" element={<ScoreSheetPage />} />
         <Route path="/teach/assessments" element={<AssessmentsPage />} />
         <Route path="/teach/assessments/grade" element={<GradeItemPage />} />
@@ -141,6 +147,8 @@ function AppRoutes() {
           </ProtectedRoute>
         }
       >
+        <Route path="/me/courses" element={<LearningCoursesPage role="student" />} />
+        <Route path="/me/courses/:courseId" element={<LearningCoursePage role="student" />} />
         <Route path="/me/results" element={<MyResultsPage />} />
       </Route>
 

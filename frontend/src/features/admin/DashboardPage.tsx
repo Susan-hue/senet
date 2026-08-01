@@ -28,7 +28,6 @@ export function DashboardPage() {
   const navigate = useNavigate();
   const token = accessToken ?? "";
 
-  // Count-only page requests: the dashboard never pulls the full directory.
   const { data, loading, error, reload } = useAsyncData(
     () =>
       Promise.all([
@@ -38,7 +37,7 @@ export function DashboardPage() {
         listFaculties(token),
         listDepartments(token),
         listProgrammes(token),
-        listAssignments(token),
+        listAssignments(token, { page_size: 1 }),
       ]),
     [token],
   );
@@ -49,13 +48,12 @@ export function DashboardPage() {
   const stats = useMemo(() => {
     if (!data) return null;
     const [students, lecturers, courses, faculties, departments, programmes, assignments] = data;
-    const assignedLecturers = new Set(assignments.map((a) => a.lecturer));
     return {
       students: students.count,
       courses: courses.count,
       faculties: faculties.length,
       lecturers: lecturers.count,
-      unassigned: Math.max(lecturers.count - assignedLecturers.size, 0),
+      assignments: assignments.count,
       departments: departments.length,
       programmes: programmes.length,
     };
@@ -98,8 +96,8 @@ export function DashboardPage() {
           <StatCard
             label="Lecturers"
             value={stats.lecturers.toLocaleString()}
-            foot={stats.unassigned > 0 ? `${stats.unassigned} unassigned` : "all assigned"}
-            tone={stats.unassigned > 0 ? "warning" : "success"}
+            foot={`${stats.assignments.toLocaleString()} course ${stats.assignments === 1 ? "assignment" : "assignments"}`}
+            tone={stats.assignments > 0 ? "success" : "warning"}
           />
           <StatCard
             label="Departments"

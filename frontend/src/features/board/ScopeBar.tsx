@@ -1,23 +1,7 @@
+import { ScopeSteps } from "../../components/scope";
+import type { ScopeStep } from "../../components/scope";
 import type { ScopeState } from "./useScope";
-import styles from "./board.module.css";
 
-interface Step {
-  key: "faculty" | "department" | "session" | "semester";
-  label: string;
-  placeholder: string;
-  value: string;
-  onChange: (id: string) => void;
-  options: ReadonlyArray<{ value: string; label: string }>;
-  /** Pinned to the actor's own faculty/department — shown, not editable. */
-  locked?: string;
-  disabled?: boolean;
-}
-
-/**
- * The drill-down that scopes a board. Steps read left to right and narrow as
- * they go: a later step is disabled until the one before it is answered, so a
- * board can never end up asking for every sheet in the institution at once.
- */
 export function ScopeBar({
   scope,
   levels,
@@ -30,7 +14,7 @@ export function ScopeBar({
   lockedFacultyName?: string | null;
   lockedDepartmentName?: string | null;
 }) {
-  const steps: Step[] = [];
+  const steps: ScopeStep[] = [];
 
   if (levels.includes("faculty")) {
     steps.push({
@@ -79,37 +63,5 @@ export function ScopeBar({
     disabled: !scope.scope.session,
   });
 
-  return (
-    <section className={styles.scopeBar} aria-label="Scope">
-      {steps.map((step, index) => (
-        <div key={step.key} className={styles.scopeStep}>
-          <span className={styles.scopeIndex} aria-hidden="true">
-            {index + 1}
-          </span>
-          <label className={styles.scopeField}>
-            <span className={styles.scopeLabel}>{step.label}</span>
-            {step.locked ? (
-              <span className={styles.scopeLocked} title="Scoped to you — set by your role">
-                {step.locked}
-              </span>
-            ) : (
-              <select
-                className={styles.scopeSelect}
-                value={step.value}
-                disabled={step.disabled || scope.loading}
-                onChange={(e) => step.onChange(e.target.value)}
-              >
-                <option value="">{step.placeholder}</option>
-                {step.options.map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
-            )}
-          </label>
-        </div>
-      ))}
-    </section>
-  );
+  return <ScopeSteps steps={steps} loading={scope.loading} />;
 }

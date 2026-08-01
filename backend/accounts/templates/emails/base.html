@@ -1,57 +1,103 @@
 {% comment %}
 Shared shell for transactional email.
 
-Table layout and inline styles throughout — email clients strip <style> blocks,
-collapse divs and ignore flex/grid, so this is deliberately not how the app is
-built. Colours mirror the product's near-black palette but every one is stated
-explicitly: a client that ignores `color-scheme` must still render legible text,
-so no element depends on inheriting a dark background.
+Table layout and inline styles throughout — email clients strip most <style>
+rules, collapse divs and ignore flex/grid, so this is deliberately not how the
+app is built. Colours mirror the product's near-black palette but every one is
+stated explicitly: a client that ignores `color-scheme` must still render
+legible text, so no element depends on inheriting a dark background.
+
+The <style> block carries only progressive enhancement — the layout is already
+correct without it, for the clients that drop it.
 
 No remote images. A wordmark in text always renders; a logo behind an image
 proxy often does not, and image-heavy mail scores worse with spam filters.
-{% endcomment %}<!--[if mso]><style>body,table,td{font-family:Segoe UI,Arial,sans-serif !important}</style><![endif]-->
-<div style="display:none;max-height:0;overflow:hidden;opacity:0">{% block preheader %}{% endblock %}</div>
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#0a0a0a;margin:0;padding:32px 12px">
+{% endcomment %}<!DOCTYPE html>
+<html lang="en" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="x-apple-disable-message-reformatting">
+<meta name="color-scheme" content="dark light">
+<meta name="supported-color-schemes" content="dark light">
+<title>Senet</title>
+<!--[if mso]>
+<noscript><xml><o:OfficeDocumentSettings><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml></noscript>
+<style>body,table,td,a{font-family:'Segoe UI',Arial,sans-serif !important}</style>
+<![endif]-->
+<style>
+  /* Clients that keep <style> get tighter mobile spacing; the rest keep the
+     inline padding, which is already usable at 320px. */
+  @media only screen and (max-width:520px) {
+    .card { padding: 26px 22px !important; }
+    .shell { padding: 20px 10px !important; }
+    .cta { display: block !important; text-align: center !important; }
+  }
+  /* Gmail and Outlook.com underline and recolour links regardless of the
+     inline colour; these win it back. */
+  a[x-apple-data-detectors], .unstyled a {
+    color: inherit !important;
+    text-decoration: none !important;
+    font-size: inherit !important;
+    font-weight: inherit !important;
+  }
+</style>
+</head>
+<body style="margin:0;padding:0;background-color:#0a0a0a;-webkit-font-smoothing:antialiased">
+
+<div style="display:none;max-height:0;overflow:hidden;opacity:0;mso-hide:all">{% block preheader %}{% endblock %}</div>
+<!-- Spacer so the client's preview pane shows the preheader alone, not the first line of the body. -->
+<div style="display:none;max-height:0;overflow:hidden;opacity:0;mso-hide:all">&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;</div>
+
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#0a0a0a;margin:0;padding:0">
   <tr>
-    <td align="center">
-      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:520px;width:100%">
+    <td class="shell" align="center" style="padding:36px 12px">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:540px;width:100%">
 
         <tr>
-          <td style="padding:0 4px 20px">
-            <span style="font-family:'Segoe UI',Helvetica,Arial,sans-serif;font-size:19px;font-weight:600;letter-spacing:-0.02em;color:#fafafa">Senet</span>
+          <td style="padding:0 4px 22px">
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+              <tr>
+                <td width="30" height="30" align="center" valign="middle" style="width:30px;height:30px;background-color:#fafafa;border-radius:9px;font-family:'Segoe UI',Helvetica,Arial,sans-serif;font-size:15px;font-weight:700;line-height:30px;color:#0a0a0a">S</td>
+                <td style="padding-left:11px;font-family:'Segoe UI',Helvetica,Arial,sans-serif;font-size:19px;font-weight:600;letter-spacing:-0.02em;line-height:30px;color:#fafafa">Senet</td>
+              </tr>
+            </table>
           </td>
         </tr>
 
         <tr>
-          <td style="background-color:#0e0e0e;border:1px solid #232323;border-radius:12px;padding:34px 32px">
-            <h1 style="margin:0 0 14px;font-family:'Segoe UI',Helvetica,Arial,sans-serif;font-size:22px;line-height:1.3;font-weight:600;letter-spacing:-0.02em;color:#fafafa">{% block heading %}{% endblock %}</h1>
+          <td class="card" style="background-color:#0e0e0e;border:1px solid #232323;border-radius:14px;padding:36px 34px">
+            <div style="font-family:'Segoe UI',Helvetica,Arial,sans-serif;font-size:11px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:#7d7d7d">{% block eyebrow %}{% endblock %}</div>
+
+            <h1 style="margin:10px 0 14px;font-family:'Segoe UI',Helvetica,Arial,sans-serif;font-size:23px;line-height:1.3;font-weight:600;letter-spacing:-0.02em;color:#fafafa">{% block heading %}{% endblock %}</h1>
 
             <div style="font-family:'Segoe UI',Helvetica,Arial,sans-serif;font-size:15px;line-height:1.65;color:#b4b4b4">
               {% block body %}{% endblock %}
             </div>
 
-            <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:26px 0 8px">
-              <tr>
-                <td style="background-color:#fafafa;border-radius:8px">
-                  <a href="{{ link }}" style="display:inline-block;padding:13px 28px;font-family:'Segoe UI',Helvetica,Arial,sans-serif;font-size:15px;font-weight:600;color:#0a0a0a;text-decoration:none">{% block cta %}{% endblock %}</a>
-                </td>
-              </tr>
-            </table>
+            {% block button %}{% endblock %}
 
-            <p style="margin:20px 0 0;font-family:'Segoe UI',Helvetica,Arial,sans-serif;font-size:13px;line-height:1.6;color:#7d7d7d">
+            <p style="margin:22px 0 0;font-family:'Segoe UI',Helvetica,Arial,sans-serif;font-size:13px;line-height:1.6;color:#7d7d7d">
               {% block expiry %}{% endblock %}
             </p>
 
-            <p style="margin:18px 0 0;padding-top:18px;border-top:1px solid #1e1e1e;font-family:'Segoe UI',Helvetica,Arial,sans-serif;font-size:12px;line-height:1.6;color:#6b6b6b">
-              If the button doesn't work, paste this into your browser:<br>
+            <p style="margin:20px 0 0;padding-top:20px;border-top:1px solid #1e1e1e;font-family:'Segoe UI',Helvetica,Arial,sans-serif;font-size:12px;line-height:1.6;color:#6b6b6b">
+              If the button doesn&rsquo;t work, paste this into your browser:<br>
               <a href="{{ link }}" style="color:#a3a3f5;text-decoration:none;word-break:break-all">{{ link }}</a>
             </p>
           </td>
         </tr>
 
         <tr>
-          <td style="padding:18px 4px 0;font-family:'Segoe UI',Helvetica,Arial,sans-serif;font-size:12px;line-height:1.6;color:#6b6b6b">
+          <td style="padding:20px 4px 0;font-family:'Segoe UI',Helvetica,Arial,sans-serif;font-size:12px;line-height:1.6;color:#6b6b6b">
             {% block footnote %}{% endblock %}
+          </td>
+        </tr>
+
+        <tr>
+          <td class="unstyled" style="padding:16px 4px 0;font-family:'Segoe UI',Helvetica,Arial,sans-serif;font-size:11px;line-height:1.6;color:#565656">
+            Senet &middot; results management for Nigerian universities<br>
+            This is an automated message — replies to it aren&rsquo;t monitored.
           </td>
         </tr>
 
@@ -59,3 +105,6 @@ proxy often does not, and image-heavy mail scores worse with spam filters.
     </td>
   </tr>
 </table>
+
+</body>
+</html>
