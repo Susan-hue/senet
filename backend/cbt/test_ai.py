@@ -113,6 +113,17 @@ class AIGenerationTests(APITestCase):
             self.assertEqual(self._post(self.lecturer).status_code, 200)
             self.assertEqual(self._post(self.admin).status_code, 200)
 
+    def test_all_drafts_malformed_is_reported_not_returned_as_an_empty_preview(self):
+        provider = MagicMock()
+        provider.generate.return_value = [
+            {"type": "mcq", "prompt": "", "options": [], "correct_answer": 0},
+            {"type": "not_a_type", "prompt": "Anything?"},
+        ]
+        with patch("cbt.ai.get_provider", return_value=provider):
+            response = self._post(self.lecturer)
+        self.assertEqual(response.status_code, status.HTTP_502_BAD_GATEWAY)
+        self.assertIn("no usable questions", response.data["message"])
+
     def test_provider_error_returns_clean_error_not_500(self):
         provider = MagicMock()
         provider.generate.side_effect = AIProviderError("The AI provider is unavailable.")

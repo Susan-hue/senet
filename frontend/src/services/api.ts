@@ -14,6 +14,16 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * Normalise a `fetch` rejection. A caller-initiated cancellation is re-thrown
+ * untouched — reporting "check your connection" for a request the app aborted
+ * itself would be a lie the caller cannot tell apart from a real outage.
+ */
+function throwNetworkError(cause: unknown): never {
+  if (cause instanceof DOMException && cause.name === "AbortError") throw cause;
+  throw new ApiError("Network error. Check your connection and try again.", 0, null);
+}
+
 interface RequestOptions {
   method?: string;
   body?: unknown;
@@ -37,8 +47,8 @@ export async function apiRequest<T>(
       body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
       signal: options.signal,
     });
-  } catch {
-    throw new ApiError("Network error. Check your connection and try again.", 0, null);
+  } catch (cause) {
+    throwNetworkError(cause);
   }
 
   let envelope: ApiEnvelope<T> | null = null;
@@ -100,8 +110,8 @@ export async function requestFileOrJob<J>(
       headers,
       credentials: "include",
     });
-  } catch {
-    throw new ApiError("Network error. Check your connection and try again.", 0, null);
+  } catch (cause) {
+    throwNetworkError(cause);
   }
 
   const contentType = response.headers.get("Content-Type") ?? "";
@@ -162,8 +172,8 @@ export async function apiUpload<T>(
       body: form,
       signal,
     });
-  } catch {
-    throw new ApiError("Network error. Check your connection and try again.", 0, null);
+  } catch (cause) {
+    throwNetworkError(cause);
   }
 
   let envelope: ApiEnvelope<T> | null = null;

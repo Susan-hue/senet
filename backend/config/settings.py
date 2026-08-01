@@ -109,6 +109,40 @@ elif DEBUG:
 else:
     raise ValueError("DATABASE_URL must be set when DEBUG is False")
 
+# Application loggers have no handler of their own, so anything they record
+# would otherwise fall through to the logging module's last-resort handler and
+# be dropped below WARNING. Background work (imports, exports, notification
+# delivery) reports its failures through these loggers, so they must reach the
+# platform's stdout log.
+#
+# The suite deliberately exercises those failure paths, so it stays quiet unless
+# LOG_LEVEL is set explicitly.
+LOG_LEVEL = config("LOG_LEVEL", default="CRITICAL" if TESTING else "INFO").upper()
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "verbose": {
+            "format": "{asctime} {levelname} {name} {message}",
+            "style": "{",
+        },
+    },
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "formatter": "verbose",
+            "level": LOG_LEVEL,
+        },
+    },
+    "root": {"handlers": ["console"], "level": "INFO"},
+    "loggers": {
+        # Unhandled exceptions in a view: logged with their traceback rather
+        # than only being rendered as a 500 envelope.
+        "django.request": {"handlers": ["console"], "level": "ERROR", "propagate": False},
+    },
+}
+
 AUTH_USER_MODEL = "accounts.User"
 
 AUTH_PASSWORD_VALIDATORS = [

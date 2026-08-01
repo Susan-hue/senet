@@ -6,6 +6,7 @@ so a request never waits on a provider, and a rolled-back transition never
 produces a message about a change that did not happen.
 """
 
+import logging
 import re
 import secrets
 from datetime import timedelta
@@ -14,6 +15,7 @@ from django.conf import settings
 from django.contrib.auth.hashers import check_password, make_password
 from django.db import transaction
 from django.utils import timezone
+from kombu.exceptions import OperationalError
 from rest_framework.exceptions import PermissionDenied, ValidationError
 
 from accounts.models import Role
@@ -25,6 +27,8 @@ from notifications.models import (
     NotificationStatus,
     ResultCheckRegistration,
 )
+
+logger = logging.getLogger(__name__)
 
 # Which channels each event may use. WhatsApp additionally depends on
 # NOTIFICATIONS_WHATSAPP_ENABLED, so a tenant can run without it.
@@ -106,10 +110,23 @@ def _address_for(user, channel):
 
 
 def _enqueue(notification):
+    """Hand the row to Celery once the trigger's transaction commits.
+
+    A broker outage is recorded on the row and logged rather than raised: this
+    runs in an ``on_commit`` callback of a request that has already committed
+    its academic change, so an exception here would turn a successful
+    transition into a 500 and leave the row QUEUED for a delivery that was
+    never scheduled.
+    """
+
     def _send():
         from notifications.tasks import send_notification
 
-        send_notification.delay(str(notification.id))
+        try:
+            send_notification.delay(str(notification.id))
+        except OperationalError as exc:
+            logger.exception("Could not queue notification %s", notification.id)
+            notification.mark_attempt_failed(provider="broker", error=exc, final=True)
 
     transaction.on_commit(_send)
 
