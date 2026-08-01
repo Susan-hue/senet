@@ -1,0 +1,327 @@
+/* --- Drill-down scope bar --- */
+.bar {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 14px;
+  padding: 16px 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.step {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+}
+
+.index {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  margin-top: 22px;
+  border-radius: 50%;
+  border: 1px solid var(--border-hover);
+  color: var(--text-faint);
+  font-family: var(--mono);
+  font-size: 0.66rem;
+}
+
+.indexDone {
+  border-color: var(--accent-eyebrow, var(--border-strong));
+  color: var(--accent-eyebrow, var(--text-primary));
+}
+
+.field {
+  flex: 1;
+  min-width: 0;
+}
+
+.label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.select {
+  width: 100%;
+  height: 38px;
+  padding: 0 32px 0 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface-2)
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%238a8a92' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")
+    no-repeat right 10px center;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 0.88rem;
+  cursor: pointer;
+  appearance: none;
+  text-overflow: ellipsis;
+}
+
+.select:focus {
+  outline: none;
+  border-color: var(--border-strong);
+}
+
+.select:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.locked {
+  display: flex;
+  align-items: center;
+  height: 38px;
+  padding: 0 12px;
+  border-radius: var(--radius-sm);
+  border: 1px dashed var(--border-hover);
+  background: var(--surface-2);
+  color: var(--text-muted);
+  font-size: 0.88rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.hint {
+  display: block;
+  margin-top: 6px;
+  font-size: 0.74rem;
+  color: var(--text-faint);
+}
+
+/* --- Remote (searchable) picker --- */
+.picker {
+  position: relative;
+  min-width: 0;
+}
+
+.pickerControl {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 38px;
+  padding: 0 10px 0 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+}
+
+.pickerControl:focus-within {
+  border-color: var(--border-strong);
+}
+
+.pickerControl[data-disabled] {
+  opacity: 0.45;
+}
+
+.pickerTrigger {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 0.88rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.pickerTrigger:focus-visible {
+  outline: none;
+}
+
+.pickerTrigger:disabled {
+  cursor: default;
+}
+
+.pickerValue {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.pickerPlaceholder {
+  color: var(--text-faint);
+}
+
+.pickerCaret {
+  flex-shrink: 0;
+  color: var(--text-faint);
+}
+
+.pickerClear {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  width: 20px;
+  height: 20px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-faint);
+  cursor: pointer;
+}
+
+.pickerClear:hover {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+
+.pop {
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  min-width: 260px;
+  border: 1px solid var(--border-hover);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  box-shadow: 0 18px 40px rgb(0 0 0 / 45%);
+  overflow: hidden;
+}
+
+.popSearch {
+  display: block;
+  width: 100%;
+  height: 38px;
+  padding: 0 12px;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 0.88rem;
+}
+
+.popSearch:focus {
+  outline: none;
+}
+
+.popList {
+  max-height: 260px;
+  overflow-y: auto;
+  margin: 0;
+  padding: 4px 0;
+  list-style: none;
+}
+
+.popItem {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 0.88rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.popItem:hover,
+.popItemActive {
+  background: var(--surface-hover);
+}
+
+.popItemMain {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.popItemHint {
+  flex-shrink: 0;
+  color: var(--text-faint);
+  font-family: var(--mono);
+  font-size: 0.76rem;
+}
+
+.popNote {
+  padding: 12px;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+}
+
+.popFoot {
+  padding: 8px 12px;
+  border-top: 1px solid var(--border);
+  color: var(--text-faint);
+  font-size: 0.76rem;
+}
+
+/* --- Stage gate --- */
+.gate {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 48px 24px;
+  text-align: center;
+}
+
+.gateSteps {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
+  margin-bottom: 4px;
+}
+
+.gateChip {
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--text-faint);
+  font-size: 0.74rem;
+  letter-spacing: 0.04em;
+}
+
+.gateChipDone {
+  border-color: var(--border-strong);
+  background: var(--surface-2);
+  color: var(--text-primary);
+}
+
+.gateChipNext {
+  border-style: dashed;
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+
+.gateTitle {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.gateHint {
+  margin: 0;
+  max-width: 46ch;
+  color: var(--text-muted);
+  font-size: 0.88rem;
+  line-height: 1.55;
+}

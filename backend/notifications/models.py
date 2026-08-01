@@ -37,6 +37,7 @@ class NotificationEvent(models.TextChoices):
     CHEATING_FLAG_ESCALATED = "cheating_flag_escalated", "Integrity flag escalated"
     RESULT_CHECK_OTP = "result_check_otp", "Result-check phone verification code"
     RESULT_CHECK_REPLY = "result_check_reply", "Result-check reply"
+    ANNOUNCEMENT_POSTED = "announcement_posted", "Course announcement posted"
 
 
 class Notification(AcademicBase):

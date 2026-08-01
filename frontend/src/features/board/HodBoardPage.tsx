@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { Alert } from "../../components";
 import { EmptyState, ErrorState } from "../../components/admin";
+import { RemotePicker } from "../../components/scope";
 import { useAuth } from "../../hooks";
 import { listCourses } from "../../services/accounts";
 import { listWorklist } from "../../services/results";
@@ -31,6 +32,7 @@ export function HodBoardPage() {
   const { session, semester } = scope.scope;
 
   const [course, setCourse] = useState("");
+  const [courseLabel, setCourseLabel] = useState("");
   const [query, setQuery] = useState("");
   const search = useDebounced(query.trim());
   const [page, setPage] = useState(1);
@@ -38,14 +40,6 @@ export function HodBoardPage() {
   // Reset to the first page whenever the scope narrows, so a page-3 view never
   // survives into a filter that has fewer pages.
   useEffect(() => setPage(1), [session, semester, course, search]);
-
-  const courses = useAsyncData(
-    () =>
-      user?.departmentId
-        ? listCourses(token, { department: user.departmentId, page_size: 100 })
-        : Promise.resolve(null),
-    [token, user?.departmentId],
-  );
 
   const ready = Boolean(session && semester);
 
@@ -64,7 +58,6 @@ export function HodBoardPage() {
     [token, ready, session, semester, course, search, page],
   );
 
-  const courseOptions = useMemo(() => courses.data?.results ?? [], [courses.data]);
   const count = worklist.data?.count ?? 0;
 
   return (
@@ -96,19 +89,35 @@ export function HodBoardPage() {
               onChange={setQuery}
               placeholder="Search by course code, title or lecturer…"
             />
-            <select
-              className={adminStyles.filter}
-              value={course}
-              onChange={(e) => setCourse(e.target.value)}
-              aria-label="Filter by course"
-            >
-              <option value="">All courses</option>
-              {courseOptions.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.code} — {c.title}
-                </option>
-              ))}
-            </select>
+            <div className={styles.coursePicker}>
+              <RemotePicker
+                value={course}
+                valueLabel={courseLabel}
+                placeholder="All courses"
+                ariaLabel="Filter by course"
+                scopeKey={user?.departmentId ?? ""}
+                emptyText="No courses in your department."
+                fetchOptions={async (search) => {
+                  const page = await listCourses(token, {
+                    department: user?.departmentId ?? "",
+                    search,
+                    page_size: 20,
+                  });
+                  return {
+                    count: page.count,
+                    options: page.results.map((c) => ({
+                      value: c.id,
+                      label: `${c.code} — ${c.title}`,
+                      hint: c.level ? `${c.level}L` : undefined,
+                    })),
+                  };
+                }}
+                onPick={(option) => {
+                  setCourse(option?.value ?? "");
+                  setCourseLabel(option?.label ?? "");
+                }}
+              />
+            </div>
             {ready ? (
               <span className={styles.countNote}>
                 {count.toLocaleString()} sheet{count === 1 ? "" : "s"} awaiting you

@@ -113,6 +113,20 @@ def _result_check_reply(context):
     return ("Your Senet result summary", body, body)
 
 
+def _announcement_posted(context):
+    course = context["course_code"]
+    title = context["title"]
+    return (
+        f"New announcement — {course}",
+        (
+            f"{context['author_name']} posted an announcement to {course}.\n\n"
+            f"{title}\n\n"
+            "Sign in to read it in full."
+        ),
+        f"Senet: new {course} announcement — {title}",
+    )
+
+
 _RENDERERS = {
     NotificationEvent.RESULT_RETURNED: _result_returned,
     NotificationEvent.RESULT_PUBLISHED: _result_published,
@@ -122,6 +136,7 @@ _RENDERERS = {
     NotificationEvent.CHEATING_FLAG_ESCALATED: _cheating_flag_escalated,
     NotificationEvent.RESULT_CHECK_OTP: _result_check_otp,
     NotificationEvent.RESULT_CHECK_REPLY: _result_check_reply,
+    NotificationEvent.ANNOUNCEMENT_POSTED: _announcement_posted,
 }
 
 

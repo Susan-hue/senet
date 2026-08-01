@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { Alert, Button } from "../../components";
 import {
@@ -8,78 +8,156 @@ import {
   Modal,
   SkeletonTable,
 } from "../../components/admin";
+import { ScopeGate, ScopeSteps } from "../../components/scope";
+import type { ScopeStep } from "../../components/scope";
 import {
   createCourse,
   deleteCourse,
   listCourses,
   listDepartments,
   listFaculties,
+  listSemesters,
+  listSessions,
   updateCourse,
 } from "../../services/accounts";
 import { LEVEL_OPTIONS } from "../../types";
-import type { Course, Department } from "../../types";
+import type { Course, Department, Faculty } from "../../types";
 import { useAuth } from "../../hooks";
 import { useAsyncAction, useAsyncData, useDebounced } from "./useAsyncData";
 import { useFacultyDepartmentFilter } from "./useDirectoryFilters";
-import {
-  FilterSelect,
-  PageHeader,
-  Pager,
-  SearchBox,
-  SelectInput,
-  TextInput,
-  firstError,
-} from "./ui";
+import { PageHeader, Pager, SearchBox, SelectInput, TextInput, firstError } from "./ui";
 import { PlusIcon } from "./adminIcons";
 import styles from "./admin.module.css";
 
 const PAGE_SIZE = 25;
+const STAGES = ["Faculty", "Department", "Level"];
 
 export function CoursesPage() {
   const { accessToken } = useAuth();
   const token = accessToken ?? "";
   const location = useLocation();
 
+  const [level, setLevel] = useState("");
+  const [term, setTerm] = useState("");
   const [query, setQuery] = useState("");
-  const [levelFilter, setLevelFilter] = useState("");
   const [page, setPage] = useState(1);
   const search = useDebounced(query.trim());
 
   const refData = useAsyncData(
-    () => Promise.all([listFaculties(token), listDepartments(token)]),
+    () =>
+      Promise.all([
+        listFaculties(token),
+        listDepartments(token),
+        listSessions(token),
+        listSemesters(token),
+      ]),
     [token],
   );
-  const [faculties, departments] = refData.data ?? [[], []];
-  const scope = useFacultyDepartmentFilter(departments, () => setPage(1));
+  const [faculties, departments, sessions, semesters] = refData.data ?? [[], [], [], []];
+
+  const {
+    faculty,
+    department,
+    setDepartment,
+    departmentsById: deptMap,
+    departmentOptions: deptOptions,
+    pickFaculty,
+  } = useFacultyDepartmentFilter(departments);
+
+  const sessionMap = useMemo(() => {
+    const m = new Map<string, string>();
+    sessions.forEach((s) => m.set(s.id, s.name));
+    return m;
+  }, [sessions]);
+
+  const termOptions = useMemo(
+    () =>
+      semesters.map((sem) => ({
+        value: sem.id,
+        label: `${sessionMap.get(sem.session) ?? "?"} · ${sem.name}`,
+      })),
+    [semesters, sessionMap],
+  );
+  const selectedTerm = semesters.find((s) => s.id === term) ?? null;
+
+  const scoped = Boolean(faculty && department && level);
+  const doneCount = faculty ? (department ? (level ? 3 : 2) : 1) : 0;
+
+  useEffect(() => setPage(1), [faculty, department, level, term, search]);
 
   const { data, loading, error, reload } = useAsyncData(
     () =>
-      listCourses(token, {
-        page,
-        page_size: PAGE_SIZE,
-        faculty: scope.faculty,
-        department: scope.department,
-        level: levelFilter,
-        search,
-      }),
-    [token, page, scope.faculty, scope.department, levelFilter, search],
+      scoped
+        ? listCourses(token, {
+            page,
+            page_size: PAGE_SIZE,
+            faculty,
+            department,
+            level,
+            session: selectedTerm?.session ?? "",
+            semester: selectedTerm?.id ?? "",
+            search,
+          })
+        : Promise.resolve(null),
+    [token, scoped, page, faculty, department, level, selectedTerm?.id, search],
   );
   const courses = data?.results ?? [];
-  const hasFilters = Boolean(search || scope.faculty || scope.department || levelFilter);
 
   const [editing, setEditing] = useState<Course | "new" | null>(
     (location.state as { create?: boolean } | null)?.create ? "new" : null,
   );
   const [toDelete, setToDelete] = useState<Course | null>(null);
 
+  const facultyName = faculties.find((f: Faculty) => f.id === faculty)?.name ?? "";
+  const departmentName = deptMap.get(department)?.name ?? "";
+
+  const steps: ScopeStep[] = [
+    {
+      key: "faculty",
+      label: "Faculty",
+      placeholder: "Select a faculty",
+      value: faculty,
+      onChange: pickFaculty,
+      options: faculties.map((f: Faculty) => ({ value: f.id, label: `${f.code} — ${f.name}` })),
+    },
+    {
+      key: "department",
+      label: "Department",
+      placeholder: faculty ? "Select a department" : "Pick a faculty first",
+      value: department,
+      onChange: setDepartment,
+      options: deptOptions.map((d) => ({ value: d.id, label: `${d.code} — ${d.name}` })),
+      disabled: !faculty,
+    },
+    {
+      key: "level",
+      label: "Level",
+      placeholder: department ? "Select a level" : "Pick a department first",
+      value: level,
+      onChange: setLevel,
+      options: LEVEL_OPTIONS.map((l) => ({ value: l.value, label: l.label })),
+      disabled: !department,
+    },
+    {
+      key: "term",
+      label: "Term",
+      placeholder: "Any term",
+      value: term,
+      onChange: setTerm,
+      options: termOptions,
+      disabled: !level,
+      hint: "Optional — narrows to courses taught that semester.",
+    },
+  ];
+
   return (
     <div className={styles.page}>
       <PageHeader
         title="Courses"
         subtitle={
-          data
-            ? `${data.count.toLocaleString()} course${data.count === 1 ? "" : "s"}${hasFilters ? " in this view" : " across all departments"}.`
-            : "The course catalogue, one page at a time."
+          scoped && data
+            ? `${data.count.toLocaleString()} ${level} level course${data.count === 1 ? "" : "s"} in ${departmentName || "this department"}.`
+            : "Drill to a faculty, a department and a level to list courses."
         }
         actions={
           <Button onClick={() => setEditing("new")}>
@@ -88,56 +166,61 @@ export function CoursesPage() {
         }
       />
 
-      <div className={styles.toolbar}>
-        <SearchBox
-          value={query}
-          onChange={(v) => {
-            setQuery(v);
-            setPage(1);
-          }}
-          placeholder="Search by code or title…"
-        />
-        <FilterSelect
-          value={scope.faculty}
-          onChange={scope.pickFaculty}
-          label="Filter by faculty"
-          allLabel="All faculties"
-          options={faculties.map((f) => ({ value: f.id, label: `${f.code} — ${f.name}` }))}
-        />
-        <FilterSelect
-          value={scope.department}
-          onChange={scope.pickDepartment}
-          label="Filter by department"
-          allLabel="All departments"
-          options={scope.departmentOptions.map((d) => ({
-            value: d.id,
-            label: `${d.code} — ${d.name}`,
-          }))}
-        />
-        <FilterSelect
-          value={levelFilter}
-          onChange={(v) => {
-            setLevelFilter(v);
-            setPage(1);
-          }}
-          label="Filter by level"
-          allLabel="All levels"
-          options={LEVEL_OPTIONS.map((l) => ({ value: l.value, label: l.label }))}
-        />
-      </div>
+      {refData.error ? (
+        <ErrorState message={refData.error} onRetry={refData.reload} />
+      ) : (
+        <ScopeSteps steps={steps} loading={refData.loading} ariaLabel="Catalogue scope" />
+      )}
+
+      {scoped ? (
+        <div className={styles.toolbar}>
+          <SearchBox
+            value={query}
+            onChange={setQuery}
+            placeholder={`Search ${level} level courses in ${departmentName || "this department"} by code or title…`}
+          />
+        </div>
+      ) : null}
 
       <div className={styles.panel}>
-        {loading ? (
+        {!scoped ? (
+          <ScopeGate
+            stages={STAGES}
+            doneCount={doneCount}
+            title={
+              !faculty
+                ? "Select a faculty to begin"
+                : !department
+                  ? `Now select a department in ${facultyName || "this faculty"}`
+                  : "Now select a level"
+            }
+            hint={
+              !faculty
+                ? "The catalogue covers every department in the university. Narrow it to one faculty first."
+                : !department
+                  ? "Departments in the faculty you picked are listed above."
+                  : `Pick the level you want — 100 through 600 — and only ${departmentName || "this department"}'s courses at that level are listed.`
+            }
+          />
+        ) : loading ? (
           <SkeletonTable rows={6} cols={6} />
         ) : error ? (
           <ErrorState message={error} onRetry={reload} />
         ) : courses.length === 0 ? (
           <EmptyState
-            title={hasFilters ? "No matching courses" : "No courses yet"}
+            title={
+              search
+                ? `No courses match “${search}”`
+                : term
+                  ? "No courses taught in this term"
+                  : `No ${level} level courses in ${departmentName || "this department"}`
+            }
             hint={
-              hasFilters
-                ? "Try a different search, or clear the faculty, department or level filters."
-                : "Add a course or bulk-import your catalogue to get started."
+              search
+                ? "Search only looks inside the department and level you selected. Clear it, or widen the scope above."
+                : term
+                  ? "Nothing at this level has a lecturer assigned for that semester. Clear the term to see the whole level."
+                  : "Add a course to this department, or bulk-import your catalogue."
             }
           />
         ) : (
@@ -169,9 +252,7 @@ export function CoursesPage() {
                       <td className={styles.cellStrong}>{c.title}</td>
                       <td>{c.credit_units}</td>
                       <td>{c.level ?? "—"}</td>
-                      <td className={styles.cellMuted}>
-                        {scope.departmentsById.get(c.department)?.code ?? "—"}
-                      </td>
+                      <td className={styles.cellMuted}>{deptMap.get(c.department)?.code ?? "—"}</td>
                       <td className={styles.cellMuted}>
                         {c.effective_ca_weight} / {c.effective_exam_weight}
                       </td>
@@ -214,7 +295,9 @@ export function CoursesPage() {
       {editing ? (
         <CourseModal
           course={editing === "new" ? null : editing}
+          faculties={faculties}
           departments={departments}
+          defaults={{ faculty, department, level }}
           token={token}
           onClose={() => setEditing(null)}
           onSaved={() => {
@@ -241,27 +324,40 @@ export function CoursesPage() {
 
 function CourseModal({
   course,
+  faculties,
   departments,
+  defaults,
   token,
   onClose,
   onSaved,
 }: {
   course: Course | null;
+  faculties: Faculty[];
   departments: Department[];
+  defaults: { faculty: string; department: string; level: string };
   token: string;
   onClose: () => void;
   onSaved: () => void;
 }) {
   const isEdit = course !== null;
-  const [department, setDepartment] = useState(course?.department ?? "");
+  const departmentOf = (id: string) => departments.find((d) => d.id === id) ?? null;
+
+  const [faculty, setFaculty] = useState(
+    course ? (departmentOf(course.department)?.faculty ?? "") : defaults.faculty,
+  );
+  const [department, setDepartment] = useState(course?.department ?? defaults.department);
   const [code, setCode] = useState(course?.code ?? "");
   const [title, setTitle] = useState(course?.title ?? "");
   const [units, setUnits] = useState(course ? String(course.credit_units) : "");
-  const [level, setLevel] = useState(course?.level ? String(course.level) : "");
+  const [level, setLevel] = useState(
+    course?.level ? String(course.level) : isEdit ? "" : defaults.level,
+  );
   const [ca, setCa] = useState(course?.ca_weight != null ? String(course.ca_weight) : "");
   const [exam, setExam] = useState(course?.exam_weight != null ? String(course.exam_weight) : "");
   const save = useAsyncAction("Could not save the course.");
   const { message, errors } = save;
+
+  const deptOptions = departments.filter((d) => !faculty || d.faculty === faculty);
 
   function submit() {
     const body: Partial<Course> = {
@@ -301,15 +397,28 @@ function CourseModal({
             <Alert variant="error">{message}</Alert>
           </div>
         ) : null}
-        <SelectInput
-          label="Department"
-          required
-          value={department}
-          onChange={setDepartment}
-          placeholder="Select a department"
-          options={departments.map((d) => ({ value: d.id, label: `${d.code} — ${d.name}` }))}
-          error={firstError(errors, "department")}
-        />
+        <div className={styles.formGrid}>
+          <SelectInput
+            label="Faculty"
+            required
+            value={faculty}
+            onChange={(v) => {
+              setFaculty(v);
+              if (departmentOf(department)?.faculty !== v) setDepartment("");
+            }}
+            placeholder="Select a faculty"
+            options={faculties.map((f) => ({ value: f.id, label: `${f.code} — ${f.name}` }))}
+          />
+          <SelectInput
+            label="Department"
+            required
+            value={department}
+            onChange={setDepartment}
+            placeholder={faculty ? "Select a department" : "Pick a faculty first"}
+            options={deptOptions.map((d) => ({ value: d.id, label: `${d.code} — ${d.name}` }))}
+            error={firstError(errors, "department")}
+          />
+        </div>
         <div className={styles.formGrid}>
           <TextInput
             label="Course code"

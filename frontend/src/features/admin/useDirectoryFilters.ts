@@ -2,12 +2,11 @@ import { useMemo, useState } from "react";
 import type { Department } from "../../types";
 
 /**
- * The faculty → department drill every directory listing filters on. Narrowing
- * the faculty drops a department that no longer belongs to it, and any change
- * takes the listing back to its first page, so a page-3 view never survives into
- * a filter with fewer pages.
+ * The faculty → department step every scoped directory listing starts with.
+ * Departments are offered only once a faculty is chosen, and narrowing to a
+ * different faculty drops a department that no longer belongs to it.
  */
-export function useFacultyDepartmentFilter(departments: Department[], onNarrow: () => void) {
+export function useFacultyDepartmentFilter(departments: Department[]) {
   const [faculty, setFaculty] = useState("");
   const [department, setDepartment] = useState("");
 
@@ -18,27 +17,21 @@ export function useFacultyDepartmentFilter(departments: Department[], onNarrow: 
   }, [departments]);
 
   const departmentOptions = useMemo(
-    () => departments.filter((d) => !faculty || d.faculty === faculty),
+    () => departments.filter((d) => d.faculty === faculty),
     [departments, faculty],
   );
 
   function pickFaculty(id: string) {
     setFaculty(id);
-    if (id && department && departmentsById.get(department)?.faculty !== id) setDepartment("");
-    onNarrow();
-  }
-
-  function pickDepartment(id: string) {
-    setDepartment(id);
-    onNarrow();
+    if (department && departmentsById.get(department)?.faculty !== id) setDepartment("");
   }
 
   return {
     faculty,
     department,
+    setDepartment,
     departmentsById,
     departmentOptions,
     pickFaculty,
-    pickDepartment,
   };
 }
