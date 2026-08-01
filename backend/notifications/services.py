@@ -49,6 +49,9 @@ EVENT_CHANNELS = {
     NotificationEvent.CHEATING_FLAG_ESCALATED: (NotificationChannel.EMAIL,),
     NotificationEvent.RESULT_CHECK_OTP: (NotificationChannel.SMS,),
     NotificationEvent.RESULT_CHECK_REPLY: (NotificationChannel.SMS,),
+    # Email only: a class announcement is routine, and texting every enrolled
+    # student for each one would be both costly and unwelcome.
+    NotificationEvent.ANNOUNCEMENT_POSTED: (NotificationChannel.EMAIL,),
 }
 
 _DIGITS = re.compile(r"\D+")

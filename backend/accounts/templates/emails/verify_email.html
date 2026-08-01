@@ -2,13 +2,15 @@
 
 {% block preheader %}Confirm your email address to finish setting up your Senet account.{% endblock %}
 
+{% block eyebrow %}Account setup{% endblock %}
+
 {% block heading %}Confirm your email address{% endblock %}
 
 {% block body %}
 <p style="margin:0">Welcome to Senet. One quick step and your account is ready — confirm this is your email address and you'll be able to sign in and see your results as they're published.</p>
 {% endblock %}
 
-{% block cta %}Verify my email{% endblock %}
+{% block button %}{% include "emails/_button.html" with label="Verify my email" %}{% endblock %}
 
 {% block expiry %}This link is valid for {{ expiry_hours }} hours. If it expires, you can ask for a new one from the sign-in page.{% endblock %}
 

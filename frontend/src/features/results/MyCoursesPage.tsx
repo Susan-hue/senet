@@ -36,12 +36,11 @@ export function MyCoursesPage() {
       Promise.all([
         listSessions(token),
         listSemesters(token),
-        listAssignments(token),
         listResults(token, { page_size: 100 }),
       ]),
     [token],
   );
-  const [sessions, semesters, assignments, resultsPage] = data ?? [[], [], [], null];
+  const [sessions, semesters, resultsPage] = data ?? [[], [], null];
 
   const session = useMemo(
     () => sessions.find((s) => s.is_current) ?? sessions[0] ?? null,
@@ -55,9 +54,20 @@ export function MyCoursesPage() {
     ? (sessionSemesters.find((s) => s.id === semesterId) ?? null)
     : currentSemesterOf(session, semesters);
 
+  const assignmentData = useAsyncData(
+    () =>
+      session && semester
+        ? listAssignments(token, {
+            session: session.id,
+            semester: semester.id,
+            page_size: 100,
+          })
+        : Promise.resolve(null),
+    [token, session?.id, semester?.id],
+  );
   const termAssignments = useMemo(
-    () => assignments.filter((a) => a.session === session?.id && a.semester === semester?.id),
-    [assignments, session, semester],
+    () => assignmentData.data?.results ?? [],
+    [assignmentData.data],
   );
 
   const resultByCourse = useMemo(() => {
@@ -101,10 +111,12 @@ export function MyCoursesPage() {
         }
       />
 
-      {loading ? (
+      {loading || assignmentData.loading ? (
         <SkeletonCards count={3} />
       ) : error ? (
         <ErrorState message={error} onRetry={reload} />
+      ) : assignmentData.error ? (
+        <ErrorState message={assignmentData.error} onRetry={assignmentData.reload} />
       ) : termAssignments.length === 0 ? (
         <EmptyState
           title="No courses assigned this term"

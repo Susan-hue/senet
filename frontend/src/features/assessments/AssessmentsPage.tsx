@@ -55,10 +55,10 @@ export function AssessmentsPage() {
   const courseParam = params.get("course") ?? "";
 
   const term = useAsyncData(
-    () => Promise.all([listSessions(token), listSemesters(token), listAssignments(token)]),
+    () => Promise.all([listSessions(token), listSemesters(token)]),
     [token],
   );
-  const [sessions, semesters, assignments] = term.data ?? [[], [], []];
+  const [sessions, semesters] = term.data ?? [[], []];
 
   const session = useMemo(
     () => sessions.find((s) => s.is_current) ?? sessions[0] ?? null,
@@ -72,10 +72,14 @@ export function AssessmentsPage() {
     ? (sessionSemesters.find((s) => s.id === semesterParam) ?? null)
     : currentSemesterOf(session, semesters);
 
-  const termAssignments = useMemo(
-    () => assignments.filter((a) => a.session === session?.id && a.semester === semester?.id),
-    [assignments, session, semester],
+  const assigned = useAsyncData(
+    () =>
+      session && semester
+        ? listAssignments(token, { session: session.id, semester: semester.id, page_size: 100 })
+        : Promise.resolve(null),
+    [token, session?.id, semester?.id],
   );
+  const termAssignments = useMemo(() => assigned.data?.results ?? [], [assigned.data]);
   const assignment =
     termAssignments.find((a) => a.course === courseParam) ?? termAssignments[0] ?? null;
   const courseId = assignment?.course ?? "";
@@ -129,8 +133,8 @@ export function AssessmentsPage() {
     setCaPage(1);
   }
 
-  const loading = term.loading || scoped.loading;
-  const error = term.error ?? scoped.error;
+  const loading = term.loading || assigned.loading || scoped.loading;
+  const error = term.error ?? assigned.error ?? scoped.error;
 
   return (
     <div className={adminStyles.page}>

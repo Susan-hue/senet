@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { Alert, Button } from "../../components";
 import {
@@ -9,6 +9,8 @@ import {
   Modal,
   SkeletonTable,
 } from "../../components/admin";
+import { ScopeGate, ScopeSteps } from "../../components/scope";
+import type { ScopeStep } from "../../components/scope";
 import { ApiError } from "../../services/api";
 import {
   createUser,
@@ -27,6 +29,7 @@ import { PlusIcon } from "./adminIcons";
 import styles from "./admin.module.css";
 
 const PAGE_SIZE = 25;
+const STAGES = ["Faculty", "Department", "Role"];
 
 function initials(name: string) {
   const p = name.trim().split(/\s+/).filter(Boolean);
@@ -41,9 +44,11 @@ export function PeoplePage() {
   const token = accessToken ?? "";
   const location = useLocation();
 
+  const [faculty, setFaculty] = useState("");
+  const [department, setDepartment] = useState("");
+  const [role, setRole] = useState<Role | "">("");
+  const [level, setLevel] = useState("");
   const [query, setQuery] = useState("");
-  const [facultyFilter, setFacultyFilter] = useState("");
-  const [deptFilter, setDeptFilter] = useState("");
   const [page, setPage] = useState(1);
   const search = useDebounced(query.trim());
 
@@ -53,21 +58,6 @@ export function PeoplePage() {
   );
   const [faculties, departments, config] = refData.data ?? [[], [], { lecturer_ranks: [] }];
 
-  const { data, loading, error, reload } = useAsyncData(
-    () =>
-      listUsers(token, {
-        page,
-        page_size: PAGE_SIZE,
-        faculty: facultyFilter,
-        department: deptFilter,
-        search,
-        is_active: true,
-      }),
-    [token, page, facultyFilter, deptFilter, search],
-  );
-  const people = data?.results ?? [];
-  const hasFilters = Boolean(search || facultyFilter || deptFilter);
-
   const deptMap = useMemo(() => {
     const m = new Map<string, Department>();
     departments.forEach((d) => m.set(d.id, d));
@@ -75,9 +65,32 @@ export function PeoplePage() {
   }, [departments]);
 
   const deptOptions = useMemo(
-    () => departments.filter((d) => !facultyFilter || d.faculty === facultyFilter),
-    [departments, facultyFilter],
+    () => departments.filter((d) => d.faculty === faculty),
+    [departments, faculty],
   );
+
+  const scoped = Boolean(faculty && department && role);
+  const doneCount = faculty ? (department ? (role ? 3 : 2) : 1) : 0;
+
+  useEffect(() => setPage(1), [faculty, department, role, level, search]);
+
+  const { data, loading, error, reload } = useAsyncData(
+    () =>
+      scoped
+        ? listUsers(token, {
+            page,
+            page_size: PAGE_SIZE,
+            faculty,
+            department,
+            role: role as Role,
+            level: role === "student" ? level : "",
+            search,
+            is_active: true,
+          })
+        : Promise.resolve(null),
+    [token, scoped, page, faculty, department, role, level, search],
+  );
+  const people = data?.results ?? [];
 
   const [editing, setEditing] = useState<Person | "new" | null>(
     (location.state as { create?: boolean } | null)?.create ? "new" : null,
@@ -85,9 +98,56 @@ export function PeoplePage() {
   const [toRemove, setToRemove] = useState<Person | null>(null);
 
   function pickFaculty(id: string) {
-    setFacultyFilter(id);
-    if (id && deptFilter && deptMap.get(deptFilter)?.faculty !== id) setDeptFilter("");
-    setPage(1);
+    setFaculty(id);
+    if (department && deptMap.get(department)?.faculty !== id) setDepartment("");
+  }
+
+  const roleLabel = role ? ROLE_META[role as Role].label : "";
+  const facultyName = faculties.find((f: Faculty) => f.id === faculty)?.name ?? "";
+  const departmentName = deptMap.get(department)?.name ?? "";
+
+  const steps: ScopeStep[] = [
+    {
+      key: "faculty",
+      label: "Faculty",
+      placeholder: "Select a faculty",
+      value: faculty,
+      onChange: pickFaculty,
+      options: faculties.map((f: Faculty) => ({ value: f.id, label: `${f.code} — ${f.name}` })),
+    },
+    {
+      key: "department",
+      label: "Department",
+      placeholder: faculty ? "Select a department" : "Pick a faculty first",
+      value: department,
+      onChange: setDepartment,
+      options: deptOptions.map((d) => ({ value: d.id, label: `${d.code} — ${d.name}` })),
+      disabled: !faculty,
+    },
+    {
+      key: "role",
+      label: "Role",
+      placeholder: department ? "Select a role" : "Pick a department first",
+      value: role,
+      onChange: (v) => {
+        setRole(v as Role | "");
+        if (v !== "student") setLevel("");
+      },
+      options: roleOptions,
+      disabled: !department,
+      hint: "One role at a time — students and staff are never listed together.",
+    },
+  ];
+
+  if (role === "student") {
+    steps.push({
+      key: "level",
+      label: "Level",
+      placeholder: "All levels",
+      value: level,
+      onChange: setLevel,
+      options: LEVEL_OPTIONS.map((l) => ({ value: l.value, label: l.label })),
+    });
   }
 
   return (
@@ -95,9 +155,9 @@ export function PeoplePage() {
       <PageHeader
         title="People"
         subtitle={
-          data
-            ? `${data.count.toLocaleString()} active ${data.count === 1 ? "person" : "people"}${hasFilters ? " in this view" : ""}.`
-            : "Students, lecturers and staff across the university."
+          scoped && data
+            ? `${data.count.toLocaleString()} active ${roleLabel.toLowerCase()}${data.count === 1 ? "" : "s"} in ${departmentName || "this department"}.`
+            : "Drill to a faculty, a department and a role to list people."
         }
         actions={
           <Button onClick={() => setEditing("new")}>
@@ -106,58 +166,57 @@ export function PeoplePage() {
         }
       />
 
-      <div className={styles.toolbar}>
-        <SearchBox
-          value={query}
-          onChange={(v) => {
-            setQuery(v);
-            setPage(1);
-          }}
-          placeholder="Search by name, email or matric number…"
-        />
-        <select
-          className={styles.filter}
-          value={facultyFilter}
-          onChange={(e) => pickFaculty(e.target.value)}
-          aria-label="Filter by faculty"
-        >
-          <option value="">All faculties</option>
-          {faculties.map((f: Faculty) => (
-            <option key={f.id} value={f.id}>
-              {f.code} — {f.name}
-            </option>
-          ))}
-        </select>
-        <select
-          className={styles.filter}
-          value={deptFilter}
-          onChange={(e) => {
-            setDeptFilter(e.target.value);
-            setPage(1);
-          }}
-          aria-label="Filter by department"
-        >
-          <option value="">All departments</option>
-          {deptOptions.map((d) => (
-            <option key={d.id} value={d.id}>
-              {d.code} — {d.name}
-            </option>
-          ))}
-        </select>
-      </div>
+      {refData.error ? (
+        <ErrorState message={refData.error} onRetry={refData.reload} />
+      ) : (
+        <ScopeSteps steps={steps} loading={refData.loading} ariaLabel="Directory scope" />
+      )}
+
+      {scoped ? (
+        <div className={styles.toolbar}>
+          <SearchBox
+            value={query}
+            onChange={setQuery}
+            placeholder={`Search ${roleLabel.toLowerCase()}s in ${departmentName || "this department"} by name, email or ID…`}
+          />
+        </div>
+      ) : null}
 
       <div className={styles.panel}>
-        {loading ? (
+        {!scoped ? (
+          <ScopeGate
+            stages={STAGES}
+            doneCount={doneCount}
+            title={
+              !faculty
+                ? "Select a faculty to begin"
+                : !department
+                  ? `Now select a department in ${facultyName || "this faculty"}`
+                  : "Now select a role"
+            }
+            hint={
+              !faculty
+                ? "The directory holds every student and staff member in the university. Narrow it to one faculty first."
+                : !department
+                  ? "Departments in the faculty you picked are listed above."
+                  : "Pick the role you are looking for — students, lecturers, HOD, dean, course adviser, exam officer and so on. Only that role is listed."
+            }
+          />
+        ) : loading ? (
           <SkeletonTable rows={6} cols={5} />
         ) : error ? (
           <ErrorState message={error} onRetry={reload} />
         ) : people.length === 0 ? (
           <EmptyState
-            title={hasFilters ? "No matching people" : "No people yet"}
+            title={
+              search
+                ? `No ${roleLabel.toLowerCase()}s match “${search}”`
+                : `No ${roleLabel.toLowerCase()}s in ${departmentName || "this department"}`
+            }
             hint={
-              hasFilters
-                ? "Try a different search, or clear the faculty and department filters."
-                : "Add a person or bulk-import students to populate the directory."
+              search
+                ? "Search only looks inside the department and role you selected. Clear it, or widen the scope above."
+                : "Add a person to this department, or bulk-import them."
             }
           />
         ) : (
@@ -168,8 +227,8 @@ export function PeoplePage() {
                   <tr>
                     <th>Name</th>
                     <th>Email</th>
-                    <th>Role</th>
-                    <th>Department</th>
+                    <th>{role === "student" ? "Matric no." : "Role"}</th>
+                    <th>{role === "student" ? "Level" : role === "lecturer" ? "Rank" : "Department"}</th>
                     <th aria-label="Actions" />
                   </tr>
                 </thead>
@@ -200,13 +259,22 @@ export function PeoplePage() {
                           {p.email ?? "—"}
                         </td>
                         <td>
-                          <Badge tone={meta.tone}>{meta.label}</Badge>
-                          {p.role === "lecturer" && p.rank ? (
-                            <span className={styles.rankNote}>{p.rank}</span>
-                          ) : null}
+                          {role === "student" ? (
+                            <span className={[styles.cellMuted, styles.mono].join(" ")}>
+                              {p.identifier || "—"}
+                            </span>
+                          ) : (
+                            <Badge tone={meta.tone}>{meta.label}</Badge>
+                          )}
                         </td>
                         <td className={styles.cellMuted}>
-                          {p.department ? (deptMap.get(p.department)?.code ?? "—") : "—"}
+                          {role === "student"
+                            ? p.current_level
+                              ? `${p.current_level} Level`
+                              : "—"
+                            : role === "lecturer"
+                              ? (p.rank ?? "—")
+                              : (deptMap.get(p.department ?? "")?.code ?? "—")}
                         </td>
                         <td>
                           <div className={styles.rowActions}>
@@ -237,7 +305,7 @@ export function PeoplePage() {
                 page={data.page}
                 totalPages={data.total_pages}
                 count={data.count}
-                label="people"
+                label={`${roleLabel.toLowerCase()}${data.count === 1 ? "" : "s"}`}
                 onPage={setPage}
               />
             ) : null}
@@ -248,7 +316,9 @@ export function PeoplePage() {
       {editing ? (
         <PersonModal
           person={editing === "new" ? null : editing}
+          faculties={faculties}
           departments={departments}
+          defaults={{ faculty, department, role: (role || "student") as Role }}
           ranks={config.lecturer_ranks}
           token={token}
           onClose={() => setEditing(null)}
@@ -276,29 +346,40 @@ export function PeoplePage() {
 
 function PersonModal({
   person,
+  faculties,
   departments,
+  defaults,
   ranks,
   token,
   onClose,
   onSaved,
 }: {
   person: Person | null;
+  faculties: Faculty[];
   departments: Department[];
+  defaults: { faculty: string; department: string; role: Role };
   ranks: string[];
   token: string;
   onClose: () => void;
   onSaved: () => void;
 }) {
   const isEdit = person !== null;
+  const departmentOf = (id: string | null) => departments.find((d) => d.id === id) ?? null;
+
   const [fullName, setFullName] = useState(person?.full_name ?? "");
   const [email, setEmail] = useState(person?.email ?? "");
-  const [role, setRole] = useState<Role>(person?.role ?? "student");
-  const [department, setDepartment] = useState(person?.department ?? "");
+  const [role, setRole] = useState<Role>(person?.role ?? defaults.role);
+  const [faculty, setFaculty] = useState(
+    person ? (departmentOf(person.department)?.faculty ?? "") : defaults.faculty,
+  );
+  const [department, setDepartment] = useState(person?.department ?? defaults.department);
   const [level, setLevel] = useState(person?.current_level ? String(person.current_level) : "");
   const [rank, setRank] = useState(person?.rank ?? "");
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [errors, setErrors] = useState<Record<string, string[]> | null>(null);
+
+  const deptOptions = departments.filter((d) => !faculty || d.faculty === faculty);
 
   async function submit() {
     setSaving(true);
@@ -377,14 +458,24 @@ function PersonModal({
             error={firstError(errors, "role")}
           />
           <SelectInput
-            label="Department"
-            value={department}
-            onChange={setDepartment}
+            label="Faculty"
+            value={faculty}
+            onChange={(v) => {
+              setFaculty(v);
+              if (departmentOf(department)?.faculty !== v) setDepartment("");
+            }}
             placeholder="None"
-            options={departments.map((d) => ({ value: d.id, label: `${d.code} — ${d.name}` }))}
-            error={firstError(errors, "department")}
+            options={faculties.map((f) => ({ value: f.id, label: `${f.code} — ${f.name}` }))}
           />
         </div>
+        <SelectInput
+          label="Department"
+          value={department}
+          onChange={setDepartment}
+          placeholder={faculty ? "None" : "Pick a faculty first"}
+          options={deptOptions.map((d) => ({ value: d.id, label: `${d.code} — ${d.name}` }))}
+          error={firstError(errors, "department")}
+        />
         {role === "student" ? (
           <SelectInput
             label="Current level"

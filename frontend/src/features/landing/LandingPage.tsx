@@ -8,22 +8,33 @@ import styles from "./landing.module.css";
  *  Breadth is the point here; the three differentiator cards below carry depth. */
 const SCOPE = [
   {
-    title: "Teaching & learning",
+    title: "Course content & delivery",
     items: [
       "Course management across every faculty and department",
       "Materials and content delivered to enrolled students",
-      "Continuous assessment: assignments, tests, projects",
-      "Online submission with deadlines and file limits",
-      "A gradebook that feeds straight into results",
+      "Lesson modules with structured learning paths",
+      "Announcements and course-wide communication",
+      "Discussion forums and collaborative learning",
     ],
   },
   {
-    title: "Examinations",
+    title: "Assignments & assessment",
+    items: [
+      "Continuous assessment: assignments, tests, projects",
+      "Online submission with deadlines and file limits",
+      "A gradebook that feeds straight into results",
+      "Rubric-based grading and feedback delivery",
+      "Peer review and collaborative assignments",
+    ],
+  },
+  {
+    title: "Computer-based testing",
     items: [
       "Question banks per course, reusable across terms",
       "Computer-based tests drawn per student",
       "Automatic marking, with manual marking where it is needed",
       "Proctoring: lockdown signals and webcam capture",
+      "Resilient exams that survive network interruptions",
     ],
   },
   {
@@ -75,7 +86,7 @@ const PRIMARY_FEATURES = [
     ],
   },
   {
-    kicker: "Proctored CBT",
+    kicker: "Resilient proctored CBT",
     title: "Exams that survive the power going out.",
     body: "Timing is server-authoritative, so a dropped connection costs a student nothing. They resume the same paper, in the same order, against the original deadline, and a background sweep submits and grades anything left open. Proctoring signals raise flags for a human to review — never an automatic penalty.",
     points: [
@@ -85,8 +96,8 @@ const PRIMARY_FEATURES = [
     ],
   },
   {
-    kicker: "Accreditation",
-    title: "Hand NUC a key, not your database.",
+    kicker: "NUC accreditation vault",
+    title: "Hand auditors a key, not your database.",
     body: "Mint a read-only token scoped to specific programmes and sessions, with an expiry, and revoke it the moment the visit ends. The auditor is never a user of your system, cannot reach a single write endpoint, and every request they make is appended to an access log.",
     points: ["Scoped, expiring, revocable", "Read-only by construction", "Every access logged"],
   },
@@ -120,21 +131,22 @@ export function LandingPage() {
       <section className={styles.hero}>
         <div className={styles.heroInner}>
           <div className={styles.heroCopy}>
-            <p className={styles.eyebrow}>Academic infrastructure</p>
+            <p className={styles.eyebrow}>Learning Management System</p>
             <h1 className={styles.heroTitle}>
-              Run your university&rsquo;s records and exams in one place.
+              The complete platform for teaching, assessment, and records.
             </h1>
             <p className={styles.heroSub}>
-              Senet carries a Nigerian university from enrolment through teaching, continuous
-              assessment and computer-based exams to Senate-ratified results &mdash; with an
-              approval chain and an audit trail that hold up to scrutiny.
+              Senet is a full LMS for Nigerian universities — course content, lessons, discussions,
+              assignments, computer-based testing, gradebook, results, and records. One platform
+              from enrollment through convocation, with the integrity and resilience your institution
+              requires.
             </p>
             <div className={styles.heroActions}>
               <Link className={styles.primaryCta} to={authenticated ? "/app" : "/login"}>
                 {authenticated ? "Go to workspace" : "Sign in"}
               </Link>
               <a className={styles.secondaryCta} href="#platform">
-                See what it covers
+                Explore the platform
               </a>
             </div>
           </div>
@@ -145,11 +157,11 @@ export function LandingPage() {
       <section className={styles.section} id="platform">
         <div className={styles.sectionInner}>
           <p className={styles.sectionTitle}>The platform</p>
-          <h2 className={styles.scopeTitle}>Everything a university runs on.</h2>
+          <h2 className={styles.scopeTitle}>One system for the entire academic experience.</h2>
           <p className={styles.scopeLead}>
-            Most institutions run this on a student portal, a pile of spreadsheets, a CBT vendor, a
-            WhatsApp group and a records office. Senet is the one system underneath all of it
-            &mdash; every faculty, every role, every term, from enrolment to convocation.
+            Senet replaces the fragmented stack most universities struggle with — student portals,
+            learning platforms, CBT vendors, spreadsheets, and records systems. One platform from
+            enrollment through convocation, with teaching and learning at the core.
           </p>
           <div className={styles.scopeGrid}>
             {SCOPE.map((group) => (
@@ -171,10 +183,10 @@ export function LandingPage() {
       <section className={styles.section} id="features">
         <div className={styles.sectionInner}>
           <p className={styles.sectionTitle}>Where Senet is different</p>
-          <h2 className={styles.scopeTitle}>Three things most systems get wrong.</h2>
+          <h2 className={styles.scopeTitle}>Built for Nigerian university realities.</h2>
           <p className={styles.scopeLead}>
-            Breadth is table stakes. These are the parts a Nigerian university cannot afford to get
-            wrong, and they are what Senet was built around first.
+            Senet delivers everything you expect from a complete LMS — content delivery, assessments,
+            gradebook, discussions — with three strengths that set it apart in the Nigerian context.
           </p>
           <div className={styles.primaryGrid}>
             {PRIMARY_FEATURES.map((feature) => (

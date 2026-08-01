@@ -39,6 +39,9 @@ INSTALLED_APPS = [
     "auditor",
     "cbt",
     "notifications",
+    "content",
+    "announcements",
+    "discussions",
 ]
 
 MIDDLEWARE = [
@@ -391,6 +394,33 @@ if SUPABASE_S3_BUCKET:
 
 ASSESSMENT_MAX_FILE_BYTES = config("ASSESSMENT_MAX_FILE_BYTES", default=10 * 1024 * 1024, cast=int)
 ASSESSMENT_ALLOWED_EXTENSIONS = (".pdf", ".doc", ".docx")
+
+# Course content accepts the spread a lecturer actually teaches from — readings,
+# slides, spreadsheets, images and short video — and is sized larger than a
+# student submission because a slide deck or a recorded lecture is bigger than
+# an essay.
+CONTENT_MAX_FILE_BYTES = config("CONTENT_MAX_FILE_BYTES", default=200 * 1024 * 1024, cast=int)
+CONTENT_ALLOWED_EXTENSIONS = (
+    ".pdf",
+    ".doc",
+    ".docx",
+    ".ppt",
+    ".pptx",
+    ".xls",
+    ".xlsx",
+    ".csv",
+    ".txt",
+    ".md",
+    ".zip",
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".gif",
+    ".mp3",
+    ".mp4",
+    ".webm",
+    ".mov",
+)
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 if not DEBUG:

@@ -481,6 +481,22 @@ class CourseListCreateView(CatalogListCreateView):
                 return qs.none()
             qs = qs.filter(level=int(level))
 
+        # A course is a catalogue entity, not a term one. Filtering by term means
+        # "courses actually taught that term", which is the lecturer-assignment
+        # relation — the only sense in which a course belongs to a session.
+        taught = {}
+        for field in ("session", "semester"):
+            raw = params.get(field)
+            if raw:
+                value = _parse_uuid(raw)
+                if value is None:
+                    return qs.none()
+                taught[f"{field}_id"] = value
+        if taught:
+            qs = qs.filter(
+                Exists(CourseAssignment.all_objects.filter(course=OuterRef("pk"), **taught))
+            )
+
         search = (params.get("search") or "").strip()
         if search:
             qs = qs.filter(Q(code__icontains=search) | Q(title__icontains=search))
@@ -552,11 +568,52 @@ class CourseAssignmentListCreateView(
 ):
     model = CourseAssignment
     serializer_class = CourseAssignmentSerializer
+    pagination_class = DirectoryPagination
 
     def get_permissions(self):
         if self.request.method in SAFE_METHODS:
             return [CanViewCourseAssignments()]
         return [CanManageCourseAssignments()]
+
+    def get_queryset(self):
+        params = self.request.query_params
+        qs = super().get_queryset().select_related("course__department", "lecturer")
+
+        faculty = params.get("faculty")
+        if faculty:
+            fid = _parse_uuid(faculty)
+            if fid is None:
+                return qs.none()
+            qs = qs.filter(course__department__faculty_id=fid)
+
+        for param, field in (
+            ("department", "course__department_id"),
+            ("session", "session_id"),
+            ("semester", "semester_id"),
+            ("lecturer", "lecturer_id"),
+            ("course", "course_id"),
+        ):
+            raw = params.get(param)
+            if raw:
+                value = _parse_uuid(raw)
+                if value is None:
+                    return qs.none()
+                qs = qs.filter(**{field: value})
+
+        level = params.get("level")
+        if level:
+            if not level.isdigit():
+                return qs.none()
+            qs = qs.filter(course__level=int(level))
+
+        search = (params.get("search") or "").strip()
+        if search:
+            qs = qs.filter(
+                Q(course__code__icontains=search)
+                | Q(course__title__icontains=search)
+                | Q(lecturer__full_name__icontains=search)
+            )
+        return qs.order_by("course__code", "lecturer__full_name", "id")
 
     def perform_create(self, serializer):
         serializer.instance = assign_lecturer(actor=self.request.user, **serializer.validated_data)
@@ -607,6 +664,12 @@ class UserListCreateView(TenantActivationMixin, EnvelopeMixin, generics.ListCrea
             if role not in Role.values:
                 return qs.none()
             qs = qs.filter(role=role)
+
+        level = params.get("level")
+        if level:
+            if not level.isdigit():
+                return qs.none()
+            qs = qs.filter(current_level=int(level))
 
         active = params.get("is_active")
         if active in ("true", "false"):
